@@ -48,6 +48,120 @@ EXPECTED_SAMPLES = (
     SAMPLE_RATE * MAX_DURATION_SECONDS
 )  # 480,000 samples - FLAM expects exactly this
 
+# Loudness Relabel postprocessing parameters (Paper Section C.4)
+# Frame rate for postprocessing: 50Hz (hop size 1200 at 48kHz)
+POSTPROCESS_FRAME_RATE = 50.0  # Hz
+MIN_GAP_FRAMES = 10  # 200ms - short gaps to fill between positive segments
+MIN_SPIKE_FRAMES = 2  # 40ms - short spikes to remove in long events
+MIN_EVENT_FRAMES = 10  # 200ms - minimum event length to apply spike removal
+
+
+def postprocess_frame_scores(
+    scores: list[float],
+    threshold: float = 0.5,
+    min_gap_frames: int = MIN_GAP_FRAMES,
+    min_spike_frames: int = MIN_SPIKE_FRAMES,
+    min_event_frames: int = MIN_EVENT_FRAMES,
+) -> list[float]:
+    """
+    Apply Loudness Relabel postprocessing from FLAM paper (Section C.4).
+
+    This temporal smoothing cleans up noisy frame-wise predictions by:
+    1. Filling short gaps (<200ms) between positive segments (mark them as positive)
+    2. Removing short spikes (<40ms) in long events (mark them as negative)
+
+    Args:
+        scores: Raw frame-wise scores (probabilities in [0, 1])
+        threshold: Decision threshold (default 0.5 for calibrated probabilities)
+        min_gap_frames: Gaps shorter than this get filled (default 10 = 200ms at 50Hz)
+        min_spike_frames: Spikes shorter than this get removed (default 2 = 40ms at 50Hz)
+        min_event_frames: Minimum event length to apply spike removal (default 10 = 200ms)
+
+    Returns:
+        Smoothed scores (same length as input)
+    """
+    if len(scores) == 0:
+        return scores
+
+    # Convert to binary predictions
+    binary = [1 if s >= threshold else 0 for s in scores]
+    n = len(binary)
+
+    # =========================================================================
+    # Step 1: Fill short gaps between positive segments
+    # If a negative segment is shorter than min_gap_frames and lies between
+    # positive segments, mark it as positive
+    # =========================================================================
+    i = 0
+    while i < n:
+        if binary[i] == 0:
+            # Find the end of this negative segment
+            gap_start = i
+            while i < n and binary[i] == 0:
+                i += 1
+            gap_end = i
+            gap_length = gap_end - gap_start
+
+            # Check if this gap is between positive segments
+            has_positive_before = gap_start > 0 and binary[gap_start - 1] == 1
+            has_positive_after = gap_end < n and binary[gap_end] == 1
+
+            # Fill short gaps between positive segments
+            if (
+                has_positive_before
+                and has_positive_after
+                and gap_length < min_gap_frames
+            ):
+                for j in range(gap_start, gap_end):
+                    binary[j] = 1
+        else:
+            i += 1
+
+    # =========================================================================
+    # Step 2: Remove short spikes in long events
+    # If a positive segment is shorter than min_spike_frames and the total
+    # event (including neighboring positives) exceeds min_event_frames,
+    # remove the spike
+    # =========================================================================
+    # First, find all positive segments
+    positive_segments = []
+    i = 0
+    while i < n:
+        if binary[i] == 1:
+            seg_start = i
+            while i < n and binary[i] == 1:
+                i += 1
+            seg_end = i
+            positive_segments.append((seg_start, seg_end))
+        else:
+            i += 1
+
+    # Calculate total positive frames in the event
+    total_positive_frames = sum(end - start for start, end in positive_segments)
+
+    # Remove short spikes only if total event is long enough
+    if total_positive_frames > min_event_frames:
+        for seg_start, seg_end in positive_segments:
+            seg_length = seg_end - seg_start
+            if seg_length < min_spike_frames:
+                for j in range(seg_start, seg_end):
+                    binary[j] = 0
+
+    # =========================================================================
+    # Convert binary back to smoothed scores
+    # Use original scores where positive, 0 where marked negative
+    # =========================================================================
+    smoothed = []
+    for i, (score, is_positive) in enumerate(zip(scores, binary)):
+        if is_positive:
+            # Keep original score (but ensure it's at least threshold)
+            smoothed.append(max(score, threshold))
+        else:
+            # Mark as low confidence
+            smoothed.append(min(score, threshold * 0.5))
+
+    return smoothed
+
 
 # =============================================================================
 # Lifespan: Model Loading at Startup
@@ -369,6 +483,8 @@ class ClassifyLocalResponse(BaseModel):
 
     # Frame-wise scores: dict mapping prompt -> list of scores per frame
     frame_scores: dict[str, list[float]]
+    # Smoothed frame-wise scores (after Loudness Relabel postprocessing)
+    smoothed_frame_scores: dict[str, list[float]] | None = None
     # Aggregated global scores (max across frames)
     global_scores: dict[str, float]
     prompts: list[str]
@@ -377,6 +493,7 @@ class ClassifyLocalResponse(BaseModel):
     duration_s: float
     sample_rate: int
     device: str
+    postprocessed: bool = False  # Whether Loudness Relabel was applied
     timing: dict[str, float] | None = None
 
 
@@ -582,6 +699,14 @@ async def classify_audio_local(
         "unbiased",
         description="Method for computing local similarity: 'unbiased' (Eq. 7) or 'approximate' (Eq. 8)",
     ),
+    postprocess: bool = Form(
+        True,
+        description="Apply Loudness Relabel postprocessing (Paper C.4) to smooth frame-wise predictions",
+    ),
+    threshold: float = Form(
+        0.5,
+        description="Decision threshold for postprocessing (default 0.5 for calibrated probabilities)",
+    ),
 ) -> ClassifyLocalResponse:
     """
     Classify audio using FLAM's frame-wise local similarity (Eq. 7 from paper).
@@ -706,6 +831,28 @@ async def classify_audio_local(
             # Calculate frame duration (10s / num_frames)
             frame_duration_s = 10.0 / num_frames
 
+            # Apply Loudness Relabel postprocessing if requested
+            smoothed_frame_scores = None
+            if postprocess:
+                t_before_postprocess = time.perf_counter()
+                smoothed_frame_scores = {}
+                for prompt in prompt_list:
+                    smoothed = postprocess_frame_scores(
+                        frame_scores[prompt],
+                        threshold=threshold,
+                        min_gap_frames=MIN_GAP_FRAMES,
+                        min_spike_frames=MIN_SPIKE_FRAMES,
+                        min_event_frames=MIN_EVENT_FRAMES,
+                    )
+                    smoothed_frame_scores[prompt] = [round(s, 4) for s in smoothed]
+                t_after_postprocess = time.perf_counter()
+                timing["postprocess_ms"] = round(
+                    (t_after_postprocess - t_before_postprocess) * 1000, 2
+                )
+                logger.info(
+                    f"Applied Loudness Relabel postprocessing to {len(prompt_list)} prompts"
+                )
+
     except Exception as e:
         logger.error(f"Local inference failed: {e}")
         raise HTTPException(
@@ -718,6 +865,7 @@ async def classify_audio_local(
 
     return ClassifyLocalResponse(
         frame_scores=frame_scores,
+        smoothed_frame_scores=smoothed_frame_scores,
         global_scores=global_scores,
         prompts=prompt_list,
         num_frames=num_frames,
@@ -725,5 +873,6 @@ async def classify_audio_local(
         duration_s=round(duration_s, 3),
         sample_rate=SAMPLE_RATE,
         device=str(device),
+        postprocessed=postprocess,
         timing=timing,
     )

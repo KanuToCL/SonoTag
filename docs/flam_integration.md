@@ -270,7 +270,7 @@ p(z=1|x,l,y) = σ( log(p(y|x,l) / p(y)) + β*(y) )
 **In plain English**: FLAM scores tell you "How much more likely is this audio frame to contain sound `y` compared to a random audio frame?"
 
 - **Positive scores**: Audio is MORE likely than average to contain this sound
-- **Negative scores**: Audio is LESS likely than average to contain this sound  
+- **Negative scores**: Audio is LESS likely than average to contain this sound
 - **Near zero**: No strong evidence either way
 
 ### Robust Classifier Theory (Paper Section C.3)
@@ -302,7 +302,7 @@ In practice, β* ≈ -8, so the approximation is nearly identical to the full fo
 
 ### Loudness Relabel Postprocessing (Paper Section C.4)
 
-The FLAM paper describes a **temporal smoothing** algorithm to clean up noisy frame-wise predictions:
+The FLAM paper describes a **temporal smoothing** algorithm to clean up noisy frame-wise predictions. This is now **implemented** in the `/classify-local` endpoint.
 
 **Problem**: Raw predictions have brief dropouts and glitches:
 ```
@@ -324,9 +324,28 @@ Raw:      ✓  ✓  ✓  ✗  ✓  ✓  ✓  ✓  ✓  ✗  ✗  ✓  ✗  ✗  
 | Min gap | 10 frames (200ms) | Gaps shorter than this get filled |
 | Min spike | 2 frames (40ms) | Spikes shorter than this get removed |
 
-**Result**: Cleaner event boundaries matching human perception.
+**Usage**:
+```bash
+# With postprocessing (default - postprocess=true)
+curl -X POST http://localhost:8000/classify-local \
+  -F "audio=@test.wav" \
+  -F "prompts=dog barking; speech" \
+  -F "postprocess=true" \
+  -F "threshold=0.5"
 
-> **Note**: This postprocessing is not yet implemented in the backend. It's documented here for future reference.
+# Without postprocessing
+curl -X POST http://localhost:8000/classify-local \
+  -F "audio=@test.wav" \
+  -F "prompts=dog barking; speech" \
+  -F "postprocess=false"
+```
+
+**Response fields**:
+- `frame_scores`: Raw frame-wise scores
+- `smoothed_frame_scores`: Postprocessed scores (null if postprocess=false)
+- `postprocessed`: Boolean indicating if Loudness Relabel was applied
+
+**Result**: Cleaner event boundaries matching human perception.
 
 ---
 

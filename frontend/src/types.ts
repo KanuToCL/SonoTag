@@ -25,6 +25,8 @@ export interface ClassifyResponse {
 export interface ClassifyLocalResponse {
   // Frame-wise scores: dict mapping prompt -> list of scores per frame
   frame_scores: Record<string, number[]>;
+  // Smoothed frame-wise scores (after Loudness Relabel postprocessing from Paper C.4)
+  smoothed_frame_scores: Record<string, number[]> | null;
   // Aggregated global scores (max across frames)
   global_scores: Record<string, number>;
   prompts: string[];
@@ -33,11 +35,13 @@ export interface ClassifyLocalResponse {
   duration_s: number;
   sample_rate: number;
   device: string;
+  postprocessed: boolean; // Whether Loudness Relabel was applied
   timing?: {
     read_ms: number;
     decode_ms: number;
     tensor_ms: number;
     local_similarity_ms: number;
+    postprocess_ms?: number; // Only present if postprocessed=true
     total_ms: number;
   };
 }
