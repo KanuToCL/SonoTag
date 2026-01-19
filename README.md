@@ -38,4 +38,5 @@ chmod +x *.command
   from the backend.
 - OpenFLAM is a separate repo clone in `openflam/` and is not tracked here.
 - OpenFLAM is under a non-commercial license; review before deployment.
-- For more details, see `docs/dev.md` and `docs/roadmap.md`.
+- For more details, see `docs/dev.md`, `docs/roadmap.md`, and
+  `docs/flam_integration.md`.

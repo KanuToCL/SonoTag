@@ -9,6 +9,7 @@ Deliver a modern, browser-first audio console that lets users pick a microphone,
 - Trustworthy diagnostics: show host specs, audio sample rate, and device status.
 - Configurable outputs: users can tune frequency range and display rules.
 - Deployable by default: the browser app is lightweight and stateless.
+- Desktop extension (mid-term): ship a downloadable wrapper (Tauri/Electron) that hosts the same UI but can access local GPU/CPU for high-performance inference.
 
 ## Goals
 - User opens app and sees audio permissions + device dropdown.
@@ -46,6 +47,7 @@ Deliver a modern, browser-first audio console that lets users pick a microphone,
 
 ### In Progress
 - Define FLAM inference workflow (prompt list, buffer size, output schema).
+- Run local OpenFLAM probe (`backend/scripts/flam_probe.py`) and log baseline latency.
 
 ### Next
 - Integrate FLAM model loading and `POST /classify` in the backend.

@@ -44,3 +44,4 @@ set VITE_API_BASE_URL=http://localhost:8000
 - FLAM model wiring will follow once the inference service is integrated.
 - The System Snapshot panel shows host specs only when the backend is running.
 - Sample rate is available after starting mic monitoring.
+- For FLAM integration steps, see `docs/flam_integration.md`.

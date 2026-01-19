@@ -452,6 +452,7 @@ function App() {
   const hostCpuModel = backendInfo?.cpu?.model ?? null;
   const hostMemoryBytes = backendInfo?.memory?.total_bytes ?? null;
   const hostPlatform = backendInfo?.platform ?? null;
+  const hostGpus = backendInfo?.gpus ?? [];
 
   return (
     <div className="page">
@@ -551,6 +552,24 @@ function App() {
                 <span>Memory</span>
                 <span>{formatBytes(hostMemoryBytes)}</span>
               </div>
+              {hostGpus.length > 0 ? (
+                hostGpus.map((gpu, index) => (
+                  <div className="info-line" key={`${gpu.name}-${index}`}>
+                    <span>{`GPU ${index + 1}`}</span>
+                    <span>
+                      {gpu?.name || "unknown"}
+                      {gpu?.memory_bytes
+                        ? ` (${formatBytes(gpu.memory_bytes)})`
+                        : ""}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <div className="info-line">
+                  <span>GPU</span>
+                  <span>unknown</span>
+                </div>
+              )}
               <div className="info-line">
                 <span>Host OS</span>
                 <span>{formatValue(hostPlatform)}</span>

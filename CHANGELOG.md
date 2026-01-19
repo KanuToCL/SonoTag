@@ -10,7 +10,9 @@ All notable changes to this project will be documented in this file.
 - Windows/macOS install, run, and uninstall scripts.
 - Roadmap and local development docs.
 - First-user `README.md` with quick start and architecture overview.
+- FLAM integration guide and a local probe script for experimentation.
 ### Changed
 - Hardened install/run scripts with dependency/version checks and port cleanup.
 - Backend system info now reports host CPU and memory details.
 - Roadmap expanded with product vision and tenets.
+- Product vision updated with a desktop wrapper milestone.
