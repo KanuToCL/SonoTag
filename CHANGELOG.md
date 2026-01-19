@@ -2,19 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.3] - 2026-01-19
+
+### Added - Color Themes
+- **5 Visualization Color Themes**: Selectable in Settings panel
+  - **Inferno** (default): Black - Purple - Orange - Yellow - White (classic spectrogram)
+  - **Matrix**: Dark blue - Teal - Green - Bright cyan (cyberpunk aesthetic)
+  - **Bone**: Pure grayscale from black to white (clinical/scientific look)
+  - **Plasma**: Purple - Magenta - Orange - Yellow (vibrant alternative)
+  - **Ocean**: Deep blue - Teal - Light cyan (cool tones)
+
+- **Theme Selector UI**: 2x2 grid of theme buttons in Settings panel
+  - Active theme shows gradient preview
+  - Instant theme switching for spectrogram, heatmap, and labels
+
+### Technical Notes
+- `ColorTheme` type and `COLOR_THEMES` constant define all themes
+- Each theme includes: gradient stops, label accent color, canvas background
+- `getColorFromStops()` function for flexible color interpolation
+- `colorThemeRef` keeps animation loops in sync with React state
+- Dynamic labels use theme's `labelAccent` color for consistency
+
 ## [0.4.2] - 2026-01-19
 
-### Added - Immersive Flow Layout ✨
+### Added - Immersive Flow Layout
 - **New "Immersive Flow" layout**: Full-screen, visualization-first design optimized for real-time audio analysis
   - **Full-width spectrogram & heatmap**: Edge-to-edge visualization with synchronized scroll speeds
   - **Edge fade vignette effect**: Subtle gradient overlay (120px) on left edges for depth
-  - **Dynamic label styling**: Labels automatically adjust opacity (0.3→1.0), font-weight (400→700), and color warmth based on classification score
+  - **Dynamic label styling**: Labels automatically adjust opacity (0.3-1.0), font-weight (400-700), and color warmth based on classification score
   - **Right-side labels panel**: 220px fixed-width panel with gradient fade, labels stay aligned to heatmap rows
   - **Synchronized canvas widths**: Both spectrogram and heatmap share same visible width via spacer element, ensuring identical scroll speeds
 
 - **Layout toggle**: Switch between "Immersive Flow" and "Classic" layouts
   - Footer button in Immersive mode: "Classic View"
-  - Header button in Classic mode: "✨ Immersive View"
+  - Header button in Classic mode: "Immersive View"
 
 - **Settings slide-out panel**: Clean settings UI in Immersive mode
   - Sound categories (prompts) editor
@@ -26,23 +47,23 @@ All notable changes to this project will be documented in this file.
 
 - **Compact footer controls bar**: Bottom bar with:
   - Video player or microphone controls
-  - Preset buttons (🎬 Action, 🏈 Sports, 🎵 Music)
+  - Preset buttons (Action, Sports, Music)
   - Buffer duration slider
   - Model status badge with inference count
 
 ### Changed
 - **Sort by score default**: Now ON by default for better UX in Immersive mode
 - **Background color**: Darker base color (#090d12) for better contrast with visualizations
-- **Video player size**: Increased from 120×68px to 200×112px for better visibility
+- **Video player size**: Increased from 120x68px to 200x112px for better visibility
 
 ### Fixed
 - **Heatmap/spectrogram sync**: Heatmap now ALWAYS shifts left regardless of whether scores exist, staying perfectly synchronized with spectrogram
 - **Canvas scroll speed mismatch**: Added `.spectrogram-label-spacer` (220px) to match heatmap's label panel width
 - **Labels alignment**: Dynamic labels now left-aligned and vertically centered to corresponding heatmap rows
-- **JSX structure corruption**: Fixed canvas wrapper hierarchy (spectrogram-canvas-wrap → canvas → spacer)
+- **JSX structure corruption**: Fixed canvas wrapper hierarchy (spectrogram-canvas-wrap - canvas - spacer)
 
 ### Technical Notes
-- `getDynamicLabelStyle()` helper function computes opacity, fontWeight, and color based on normalized score
+- `getDynamicLabelStyle()` helper function computes opacity, fontWeight, and color based on normalized score and theme
 - `promptsWithScores` computed in original order (not sorted) to maintain heatmap row alignment
 - CSS flexbox layout with `flex: 1` canvas wrappers and fixed-width spacers for width synchronization
 - Settings panel uses overlay + slide-in animation with `transform: translateX()`

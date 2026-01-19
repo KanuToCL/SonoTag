@@ -605,6 +605,36 @@ body {
   color: var(--muted);
 }
 
+/* Color Theme Selector */
+.theme-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.theme-option {
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  background: rgba(15, 21, 32, 0.8);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.theme-option:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.theme-option.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(255, 122, 61, 0.3);
+}
+
 /* YouTube URL Input */
 .youtube-input-row {
   display: flex;

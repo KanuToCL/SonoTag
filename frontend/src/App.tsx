@@ -190,6 +190,99 @@ const MUSIC_DECOMPOSITION_PROMPTS = [
 // Maximum prompts to show before collapsing
 const MAX_VISIBLE_PROMPTS = 10;
 
+// =============================================================================
+// Color Themes
+// =============================================================================
+
+type ColorTheme = "inferno" | "matrix" | "bone" | "plasma" | "ocean";
+
+interface ThemeColors {
+  name: string;
+  stops: HeatColorStop[];
+  labelAccent: [number, number, number]; // RGB for dynamic label color
+  canvasBg: string; // Background color for canvas
+}
+
+const COLOR_THEMES: Record<ColorTheme, ThemeColors> = {
+  inferno: {
+    name: "Inferno",
+    stops: [
+      { stop: 0, color: [0, 0, 4] },
+      { stop: 0.13, color: [40, 11, 84] },
+      { stop: 0.25, color: [101, 21, 110] },
+      { stop: 0.38, color: [159, 42, 99] },
+      { stop: 0.5, color: [212, 72, 66] },
+      { stop: 0.63, color: [245, 125, 21] },
+      { stop: 0.75, color: [250, 175, 41] },
+      { stop: 0.88, color: [252, 225, 119] },
+      { stop: 1, color: [252, 255, 164] },
+    ],
+    labelAccent: [255, 180, 100],
+    canvasBg: "#000004",
+  },
+  matrix: {
+    name: "Matrix",
+    stops: [
+      { stop: 0, color: [0, 8, 16] },
+      { stop: 0.15, color: [0, 24, 42] },
+      { stop: 0.3, color: [0, 52, 68] },
+      { stop: 0.45, color: [8, 88, 92] },
+      { stop: 0.6, color: [32, 132, 108] },
+      { stop: 0.75, color: [80, 190, 120] },
+      { stop: 0.88, color: [140, 230, 140] },
+      { stop: 1, color: [200, 255, 200] },
+    ],
+    labelAccent: [100, 255, 150],
+    canvasBg: "#000810",
+  },
+  bone: {
+    name: "Bone",
+    stops: [
+      { stop: 0, color: [0, 0, 0] },
+      { stop: 0.15, color: [35, 39, 45] },
+      { stop: 0.3, color: [70, 78, 90] },
+      { stop: 0.45, color: [105, 117, 135] },
+      { stop: 0.6, color: [145, 158, 175] },
+      { stop: 0.75, color: [185, 195, 205] },
+      { stop: 0.88, color: [215, 220, 225] },
+      { stop: 1, color: [245, 248, 250] },
+    ],
+    labelAccent: [200, 210, 225],
+    canvasBg: "#000000",
+  },
+  plasma: {
+    name: "Plasma",
+    stops: [
+      { stop: 0, color: [13, 8, 135] },
+      { stop: 0.13, color: [75, 3, 161] },
+      { stop: 0.25, color: [125, 3, 168] },
+      { stop: 0.38, color: [168, 34, 150] },
+      { stop: 0.5, color: [203, 70, 121] },
+      { stop: 0.63, color: [229, 107, 93] },
+      { stop: 0.75, color: [248, 148, 65] },
+      { stop: 0.88, color: [253, 195, 40] },
+      { stop: 1, color: [240, 249, 33] },
+    ],
+    labelAccent: [240, 180, 100],
+    canvasBg: "#0d0887",
+  },
+  ocean: {
+    name: "Ocean",
+    stops: [
+      { stop: 0, color: [8, 12, 24] },
+      { stop: 0.15, color: [16, 32, 64] },
+      { stop: 0.3, color: [24, 56, 104] },
+      { stop: 0.45, color: [32, 88, 144] },
+      { stop: 0.6, color: [48, 128, 176] },
+      { stop: 0.75, color: [80, 176, 200] },
+      { stop: 0.88, color: [144, 216, 224] },
+      { stop: 1, color: [208, 244, 248] },
+    ],
+    labelAccent: [100, 200, 240],
+    canvasBg: "#080c18",
+  },
+};
+
 const HEAT_COLORS: HeatColorStop[] = [
   { stop: 0, color: [26, 20, 16] },
   { stop: 0.3, color: [88, 52, 29] },
@@ -293,14 +386,19 @@ const clamp = (value: number, min: number, max: number): number =>
 const lerp = (start: number, end: number, amount: number): number =>
   start + (end - start) * amount;
 
-const heatColor = (value: number): string => {
+/**
+ * Generate a color for a heatmap value using the given color stops.
+ * @param value - Normalized value between 0 and 1
+ * @param stops - Array of color stops defining the gradient
+ */
+const getColorFromStops = (value: number, stops: HeatColorStop[]): string => {
   const clamped = Math.min(1, Math.max(0, value));
-  let start = HEAT_COLORS[0];
-  let end = HEAT_COLORS[HEAT_COLORS.length - 1];
+  let start = stops[0];
+  let end = stops[stops.length - 1];
 
-  for (let i = 0; i < HEAT_COLORS.length - 1; i += 1) {
-    const current = HEAT_COLORS[i];
-    const next = HEAT_COLORS[i + 1];
+  for (let i = 0; i < stops.length - 1; i += 1) {
+    const current = stops[i];
+    const next = stops[i + 1];
     if (clamped >= current.stop && clamped <= next.stop) {
       start = current;
       end = next;
@@ -317,16 +415,23 @@ const heatColor = (value: number): string => {
   return `rgb(${r}, ${g}, ${b})`;
 };
 
+// Legacy heatColor using default HEAT_COLORS (fallback)
+const heatColor = (value: number): string => {
+  return getColorFromStops(value, HEAT_COLORS);
+};
+
 /**
- * Get dynamic label styling based on score (Immersive Flow).
+ * Get dynamic label styling based on score and theme (Immersive Flow).
  * Higher scores = more prominent (bold, bright, opaque).
+ * Color uses the theme's label accent color.
  */
-const getDynamicLabelStyle = (score: number): React.CSSProperties => {
+const getDynamicLabelStyle = (score: number, theme: ThemeColors): React.CSSProperties => {
   const normalizedScore = Math.max(0, Math.min(1, score));
+  const [r, g, b] = theme.labelAccent;
   return {
     opacity: 0.3 + (normalizedScore * 0.7), // 0.3 to 1.0
     fontWeight: 400 + Math.round(normalizedScore * 300), // 400 to 700
-    color: `rgba(255, ${180 + Math.round(normalizedScore * 75)}, ${150 + Math.round(normalizedScore * 50)}, ${0.6 + normalizedScore * 0.4})`,
+    color: `rgba(${r}, ${g}, ${b}, ${0.6 + normalizedScore * 0.4})`,
     transition: 'all 0.3s ease',
   };
 };
@@ -371,6 +476,7 @@ function App() {
 const [musicDecomposition, setMusicDecomposition] = useState<boolean>(false); // Toggle for instrument prompts
   const [scoresExpanded, setScoresExpanded] = useState<boolean>(false); // Toggle for expanded scores list
 const [sortByScore, setSortByScore] = useState<boolean>(true); // Sort by score ON by default (Immersive Flow)
+  const [colorTheme, setColorTheme] = useState<ColorTheme>("inferno"); // Visualization color theme
     const [inputMode, setInputMode] = useState<InputMode>("youtube"); // Tab: microphone or youtube
     const [settingsOpen, setSettingsOpen] = useState<boolean>(false); // Settings slide-out panel
       const [layoutMode, setLayoutMode] = useState<"immersive" | "classic">("immersive"); // Layout toggle
@@ -391,6 +497,7 @@ const videoRef = useRef<HTMLVideoElement>(null);
   // Refs to access latest state values in closures (for ScriptProcessorNode callbacks)
   const bufferSecondsRef = useRef<number>(DEFAULT_BUFFER_SECONDS);
   const youtubeAnalyzingRef = useRef<boolean>(false);
+  const colorThemeRef = useRef<ColorTheme>("inferno");
 
   // ---------------------------------------------------------------------------
   // Refs
@@ -504,7 +611,8 @@ if (!youtubeAnalyzing || !heatmapRef.current || !spectrogramRef.current) return;
             const index = Math.floor((freq / nyquist) * bufferLength);
             const safeIndex = clamp(index, 0, bufferLength - 1);
             const intensity = freqData[safeIndex] / 255;
-            spectrogramContext.fillStyle = heatColor(intensity);
+              const themeStops = COLOR_THEMES[colorThemeRef.current].stops;
+              spectrogramContext.fillStyle = getColorFromStops(intensity, themeStops);
             spectrogramContext.fillRect(
               spectrogramCanvas.width - 1,
               spectrogramCanvas.height - y - 1,
@@ -542,7 +650,8 @@ if (!youtubeAnalyzing || !heatmapRef.current || !spectrogramRef.current) return;
 
         currentPrompts.forEach((prompt, row) => {
           const value = displayValues[prompt] ?? 0;
-          heatmapContext.fillStyle = heatColor(value);
+          const themeStops = COLOR_THEMES[colorThemeRef.current].stops;
+          heatmapContext.fillStyle = getColorFromStops(value, themeStops);
           heatmapContext.fillRect(
             heatmapCanvas.width - 1,
             row * rowHeight,
@@ -632,6 +741,11 @@ useEffect(() => {
   useEffect(() => {
     youtubeAnalyzingRef.current = youtubeAnalyzing;
   }, [youtubeAnalyzing]);
+
+  // Keep colorThemeRef in sync with state
+  useEffect(() => {
+    colorThemeRef.current = colorTheme;
+  }, [colorTheme]);
 
 // ---------------------------------------------------------------------------
   // Classification Logic
@@ -981,9 +1095,10 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
             }
           }
 
-          currentPrompts.forEach((prompt, row) => {
+        currentPrompts.forEach((prompt, row) => {
             const value = displayValues[prompt] ?? 0;
-            heatmapContext.fillStyle = heatColor(value);
+            const themeStops = COLOR_THEMES[colorThemeRef.current].stops;
+            heatmapContext.fillStyle = getColorFromStops(value, themeStops);
             heatmapContext.fillRect(
               heatmapCanvas.width - 1,
               row * rowHeight,
@@ -1236,7 +1351,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                     <div
                       key={prompt}
                       className="dynamic-label"
-                      style={getDynamicLabelStyle(displayScore)}
+                      style={getDynamicLabelStyle(displayScore, COLOR_THEMES[colorTheme])}
                     >
                       <span className="label-text">{prompt}</span>
                       <span className="label-score">
@@ -1530,6 +1645,28 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                     checked={sortByScore}
                     onChange={(e) => setSortByScore(e.target.checked)}
                   />
+                </div>
+              </div>
+
+              {/* Color Theme */}
+              <div className="settings-section">
+                <h3>Color Theme</h3>
+                <div className="theme-selector">
+                  {(Object.keys(COLOR_THEMES) as ColorTheme[]).map((theme) => (
+                    <button
+                      key={theme}
+                      type="button"
+                      className={`theme-option ${colorTheme === theme ? "active" : ""}`}
+                      onClick={() => setColorTheme(theme)}
+                      style={{
+                        background: colorTheme === theme
+                          ? `linear-gradient(135deg, ${getColorFromStops(0.3, COLOR_THEMES[theme].stops)}, ${getColorFromStops(0.7, COLOR_THEMES[theme].stops)})`
+                          : "rgba(15, 21, 32, 0.8)",
+                      }}
+                    >
+                      {COLOR_THEMES[theme].name}
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -2551,7 +2688,7 @@ onPause={() => {
                           <div style={{
                             width: `${displayIntensity * 100}%`,
                             height: "100%",
-                            background: heatColor(displayIntensity),
+                            background: getColorFromStops(displayIntensity, COLOR_THEMES[colorTheme].stops),
                             transition: "width 0.3s ease"
                           }} />
                         </div>

@@ -1,7 +1,22 @@
 # SonoTag GUI Layout Proposal
 
 > **Created**: January 19, 2026
+> **Updated**: January 19, 2026
 > **Purpose**: Reorganize the UI for better UX given all current features
+
+---
+
+## Layout Overview
+
+| Layout | Status | Description |
+|--------|--------|-------------|
+| Focus Mode | Proposed | Minimal, visualization-first design |
+| Power User Mode | Proposed | All controls visible in sidebar |
+| **Immersive Flow** | **Implemented (v0.4.2)** | Dynamic labels, edge fade, sync canvases |
+| Mobile/Compact Mode | Proposed | For narrow screens |
+| **Glassmorphism** | **Proposed** | Full-screen video with floating glass panels |
+
+See [Glassmorphism Layout](./glassmorphism-layout.md) for the full-screen video concept.
 
 ---
 
@@ -312,7 +327,7 @@ const drawPendingZone = (ctx: CanvasRenderingContext2D) => {
 };
 ```
 
-### ✅ Implementation Notes (v0.4.2)
+### Implementation Notes (v0.4.2)
 
 The Immersive Flow layout was implemented with the following components:
 
@@ -331,12 +346,13 @@ The Immersive Flow layout was implemented with the following components:
 
 2. **Dynamic Label Styling** - Implemented as `getDynamicLabelStyle()`:
    ```tsx
-   const getDynamicLabelStyle = (score: number): React.CSSProperties => {
+   const getDynamicLabelStyle = (score: number, theme: ThemeColors): React.CSSProperties => {
      const normalizedScore = Math.max(0, Math.min(1, score));
+     const [r, g, b] = theme.labelAccent;
      return {
        opacity: 0.3 + (normalizedScore * 0.7),
        fontWeight: 400 + Math.round(normalizedScore * 300),
-       color: `rgba(255, ${180 + Math.round(normalizedScore * 75)}, ${150 + Math.round(normalizedScore * 50)}, ${0.6 + normalizedScore * 0.4})`,
+       color: `rgba(${r}, ${g}, ${b}, ${0.6 + normalizedScore * 0.4})`,
        transition: 'all 0.3s ease',
      };
    };
@@ -347,7 +363,7 @@ The Immersive Flow layout was implemented with the following components:
    - Canvas wrappers use `flex: 1` to fill available space
    - Spectrogram has a 220px transparent spacer (`.spectrogram-label-spacer`)
    - Heatmap has the 220px labels panel (`.dynamic-labels`)
-   - Result: Both canvases have identical visible widths → identical scroll speeds
+   - Result: Both canvases have identical visible widths - identical scroll speeds
 
 4. **Heatmap Always-Shift Fix**:
    ```tsx
@@ -378,6 +394,72 @@ The Immersive Flow layout was implemented with the following components:
 - Immersive styles in `/* IMMERSIVE FLOW LAYOUT */` section (~650 lines)
 - Legacy styles preserved in `/* LEGACY STYLES */` section
 - Mobile responsive adjustments for `.immersive-footer`, `.dynamic-labels`, `.settings-panel`
+
+---
+
+### Implementation Notes (v0.4.3) - Color Themes
+
+Added 5 selectable color themes for spectrogram and heatmap visualization.
+
+#### Theme Definitions
+
+```tsx
+type ColorTheme = "inferno" | "matrix" | "bone" | "plasma" | "ocean";
+
+interface ThemeColors {
+  name: string;              // Display name
+  stops: HeatColorStop[];    // Gradient color stops
+  labelAccent: [r, g, b];    // RGB for dynamic label color
+  canvasBg: string;          // Canvas background
+}
+```
+
+#### Available Themes
+
+| Theme | Color Range | Use Case |
+|-------|-------------|----------|
+| **Inferno** | Black - Purple - Orange - Yellow - White | Classic spectrogram, high contrast |
+| **Matrix** | Dark blue - Teal - Green - Cyan | Cyberpunk aesthetic, cool tones |
+| **Bone** | Pure grayscale black to white | Clinical/scientific, accessibility |
+| **Plasma** | Purple - Magenta - Orange - Yellow | Vibrant, perceptually uniform |
+| **Ocean** | Deep blue - Teal - Light cyan | Calming, cool palette |
+
+#### Implementation
+
+1. **State and Ref**:
+   ```tsx
+   const [colorTheme, setColorTheme] = useState<ColorTheme>("inferno");
+   const colorThemeRef = useRef<ColorTheme>("inferno");
+   ```
+
+2. **Color Function**:
+   ```tsx
+   const getColorFromStops = (value: number, stops: HeatColorStop[]): string => {
+     // Interpolate between color stops based on value (0-1)
+   };
+   ```
+
+3. **Canvas Drawing** - Uses current theme from ref:
+   ```tsx
+   const themeStops = COLOR_THEMES[colorThemeRef.current].stops;
+   spectrogramContext.fillStyle = getColorFromStops(intensity, themeStops);
+   ```
+
+4. **Settings UI** - 2x2 grid of theme buttons:
+   ```tsx
+   <div className="theme-selector">
+     {(Object.keys(COLOR_THEMES) as ColorTheme[]).map((theme) => (
+       <button
+         className={`theme-option ${colorTheme === theme ? "active" : ""}`}
+         onClick={() => setColorTheme(theme)}
+       >
+         {COLOR_THEMES[theme].name}
+       </button>
+     ))}
+   </div>
+   ```
+
+---
 
 ### Comparison: Current vs Immersive Flow
 
