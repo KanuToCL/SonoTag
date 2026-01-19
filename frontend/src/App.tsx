@@ -39,18 +39,24 @@ const TARGET_SAMPLE_RATE = 48000;
 // Minimum interval between classification requests (ms) - set to 0 to classify as fast as possible
 const CLASSIFY_INTERVAL_MS = 500; // Small cooldown to prevent overlapping requests
 
+// Sliding speed control (pixels per frame)
+const DEFAULT_SLIDE_SPEED = 1;
+const MIN_SLIDE_SPEED = 1;
+const MAX_SLIDE_SPEED = 5;
+
 // Default prompts for FLAM classification
+// Compound prompts (with commas) are supported to describe sounds multiple ways
 const DEFAULT_PROMPTS = [
   "speech",
   "music",
+  "child singing",
+  "male speech, man speaking",
+  "child speech, kid speaking",
   "water drops",
   "screaming",
   "silence",
   "dog barking",
-  "keyboard typing",
   "footsteps",
-  "door closing",
-  "rain",
 ];
 
 const HEAT_COLORS: HeatColorStop[] = [
@@ -102,6 +108,52 @@ const formatHz = (value: number, withUnit = false): string => {
     return withUnit ? `${rounded} kHz` : `${rounded}k`;
   }
   return withUnit ? `${Math.round(value)} Hz` : `${Math.round(value)}`;
+};
+
+/**
+ * Normalize scores using min-max normalization to amplify differences.
+ * Maps the score range to [0, 1] based on the min and max values in the current set.
+ */
+const normalizeScoresMinMax = (
+  scores: Record<string, number>
+): Record<string, number> => {
+  const values = Object.values(scores);
+  if (values.length === 0) return {};
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min;
+
+  // If all scores are the same, return 0.5 for all
+  if (range === 0) {
+    const normalized: Record<string, number> = {};
+    for (const key of Object.keys(scores)) {
+      normalized[key] = 0.5;
+    }
+    return normalized;
+  }
+
+  const normalized: Record<string, number> = {};
+  for (const [key, value] of Object.entries(scores)) {
+    normalized[key] = (value - min) / range;
+  }
+  return normalized;
+};
+
+/**
+ * Clamp scores to [0, 1] range for visualization.
+ * Negative values (anti-correlation) become 0, positive values map linearly.
+ * This matches the FLAM paper visualization where the scale is 0.0 to 1.0.
+ */
+const clampScoresToPositive = (
+  scores: Record<string, number>
+): Record<string, number> => {
+  const clamped: Record<string, number> = {};
+  for (const [key, value] of Object.entries(scores)) {
+    // Clamp to [0, 1]: negative → 0, positive stays as-is (already in ~[-1, 1] range)
+    clamped[key] = Math.max(0, Math.min(1, value));
+  }
+  return clamped;
 };
 
 const clamp = (value: number, min: number, max: number): number =>
@@ -163,11 +215,13 @@ function App() {
   // FLAM inference state
   const [modelStatus, setModelStatus] = useState<ModelStatusResponse | null>(null);
   const [prompts, setPrompts] = useState<string[]>(DEFAULT_PROMPTS);
-  const [promptInput, setPromptInput] = useState<string>(DEFAULT_PROMPTS.join(", "));
+  const [promptInput, setPromptInput] = useState<string>(DEFAULT_PROMPTS.join("; "));
   const [classificationScores, setClassificationScores] = useState<Record<string, number>>({});
   const [isClassifying, setIsClassifying] = useState<boolean>(false);
   const [classifyError, setClassifyError] = useState<string>("");
   const [bufferSeconds, setBufferSeconds] = useState<number>(DEFAULT_BUFFER_SECONDS);
+  const [normalizeScores, setNormalizeScores] = useState<boolean>(false); // Use clamping by default (matches paper)
+  const [slideSpeed, setSlideSpeed] = useState<number>(DEFAULT_SLIDE_SPEED); // Pixels per frame for spectrogram/heatmap
 
   // ---------------------------------------------------------------------------
   // Refs
@@ -188,6 +242,7 @@ function App() {
   // Ref to hold current classification scores for draw loop
   const classificationScoresRef = useRef<Record<string, number>>({});
   const promptsRef = useRef<string[]>(DEFAULT_PROMPTS);
+  const normalizeScoresRef = useRef<boolean>(false);
 
   // Inference timing
   const [lastInferenceTime, setLastInferenceTime] = useState<number | null>(null);
@@ -277,7 +332,6 @@ function App() {
     }
   }, [selectedDeviceId]);
 
-  // ---------------------------------------------------------------------------
   // Keep refs in sync with state for draw loop
   // ---------------------------------------------------------------------------
   useEffect(() => {
@@ -287,6 +341,10 @@ function App() {
   useEffect(() => {
     promptsRef.current = prompts;
   }, [prompts]);
+
+  useEffect(() => {
+    normalizeScoresRef.current = normalizeScores;
+  }, [normalizeScores]);
 
   // ---------------------------------------------------------------------------
   // Classification Logic
@@ -328,8 +386,9 @@ function App() {
       // Convert to WAV blob
       const wavBlob = audioSamplesToWavBlob(resampledSamples, TARGET_SAMPLE_RATE);
 
-      // Send to backend
-      const result = await classifyAudio(wavBlob, prompts);
+      // Send to backend - use ref to get latest prompts
+      const currentPrompts = promptsRef.current;
+      const result = await classifyAudio(wavBlob, currentPrompts);
 
       // Update scores and timing
       const elapsedMs = performance.now() - startTime;
@@ -346,7 +405,7 @@ function App() {
     } finally {
       setIsClassifying(false);
     }
-  }, [isClassifying, prompts]);
+  }, [isClassifying]); // Removed prompts from deps - we use ref instead
 
   // ---------------------------------------------------------------------------
   // Audio Monitoring
@@ -508,7 +567,7 @@ function App() {
 
         analyser.getByteFrequencyData(freqData);
 
-        spectrogramContext.drawImage(spectrogramCanvas, -1, 0);
+        spectrogramContext.drawImage(spectrogramCanvas, -slideSpeed, 0);
         const range = freqRange.max - freqRange.min || 1;
         for (let y = 0; y < spectrogramCanvas.height; y += 1) {
           const freq = freqRange.min + (y / spectrogramCanvas.height) * range;
@@ -516,22 +575,47 @@ function App() {
           const safeIndex = clamp(index, 0, bufferLength - 1);
           const intensity = freqData[safeIndex] / 255;
           spectrogramContext.fillStyle = heatColor(intensity);
-          spectrogramContext.fillRect(
-            spectrogramCanvas.width - 1,
-            spectrogramCanvas.height - y - 1,
-            1,
-            1
-          );
+          // Draw multiple columns based on slide speed
+          for (let x = 0; x < slideSpeed; x++) {
+            spectrogramContext.fillRect(
+              spectrogramCanvas.width - slideSpeed + x,
+              spectrogramCanvas.height - y - 1,
+              1,
+              1
+            );
+          }
         }
 
-        heatmapContext.drawImage(heatmapCanvas, -1, 0);
+        heatmapContext.drawImage(heatmapCanvas, -slideSpeed, 0);
         const currentPrompts = promptsRef.current;
         const currentScores = classificationScoresRef.current;
+        const useNormalization = normalizeScoresRef.current;
         const rowHeight = heatmapCanvas.height / currentPrompts.length;
+
+        // Compute display values based on mode
+        // If normalize mode: use min-max normalization (lowest=0, highest=1)
+        // If clamp mode: clamp negative to 0
+        let displayValues: Record<string, number> = {};
+        if (Object.keys(currentScores).length > 0) {
+          if (useNormalization) {
+            // Min-max normalization: stretch to fill 0-1 range
+            const values = Object.values(currentScores);
+            const min = Math.min(...values);
+            const max = Math.max(...values);
+            const range = max - min || 1;
+            for (const [key, val] of Object.entries(currentScores)) {
+              displayValues[key] = (val - min) / range;
+            }
+          } else {
+            // Clamp mode: negative → 0
+            for (const [key, val] of Object.entries(currentScores)) {
+              displayValues[key] = Math.max(0, Math.min(1, val));
+            }
+          }
+        }
+
         currentPrompts.forEach((prompt, row) => {
-          // Use classification scores if available, otherwise use placeholder
-          const score = currentScores[prompt];
-          const value = score !== undefined ? (score + 1) / 2 : 0; // Normalize -1 to 1 range to 0 to 1
+          const value = displayValues[prompt] ?? 0;
           heatmapContext.fillStyle = heatColor(value);
           heatmapContext.fillRect(
             heatmapCanvas.width - 1,
@@ -698,14 +782,14 @@ function App() {
             <h2>FLAM Prompts</h2>
             <div className="stack">
               <label className="label" htmlFor="prompt-input">
-                Sound categories to detect (comma-separated)
+                Sound categories to detect (semicolon-separated)
               </label>
               <textarea
                 id="prompt-input"
                 value={promptInput}
                 onChange={(e) => setPromptInput(e.target.value)}
                 rows={4}
-                placeholder="speech, music, water drops, screaming, ..."
+                placeholder="speech; music; child singing; male speech, man speaking; ..."
                 style={{
                   resize: "vertical",
                   fontFamily: "inherit",
@@ -721,7 +805,7 @@ function App() {
                 type="button"
                 onClick={() => {
                   const parsed = promptInput
-                    .split(",")
+                    .split(";")
                     .map((p) => p.trim())
                     .filter((p) => p.length > 0);
                   if (parsed.length > 0) {
@@ -733,7 +817,23 @@ function App() {
                 Update prompts
               </button>
               <p className="muted">
-                {prompts.length} active prompts
+                {prompts.length} active prompts. Use semicolons to separate; commas are allowed within prompts.
+              </p>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.5rem" }}>
+                <input
+                  type="checkbox"
+                  id="normalize-toggle"
+                  checked={normalizeScores}
+                  onChange={(e) => setNormalizeScores(e.target.checked)}
+                />
+                <label htmlFor="normalize-toggle" style={{ fontSize: "0.85rem" }}>
+                  Relative mode (min-max normalization)
+                </label>
+              </div>
+              <p className="muted" style={{ fontSize: "0.75rem", marginTop: "0.25rem" }}>
+                {normalizeScores
+                  ? "Showing relative differences (best=1, worst=0)"
+                  : "Clamped mode: negative→0, positive→value (matches paper)"}
               </p>
               {classifyError && <p className="error">{classifyError}</p>}
             </div>
@@ -824,6 +924,24 @@ function App() {
                 Shorter buffer = faster updates but less context for FLAM.
                 Restart monitoring to apply buffer changes.
               </p>
+
+              <label className="label" htmlFor="slide-speed-slider" style={{ marginTop: "0.75rem" }}>
+                Slide speed: {slideSpeed}px/frame
+              </label>
+              <input
+                id="slide-speed-slider"
+                type="range"
+                min={MIN_SLIDE_SPEED}
+                max={MAX_SLIDE_SPEED}
+                step={1}
+                value={slideSpeed}
+                onChange={(e) => setSlideSpeed(Number(e.target.value))}
+                style={{ width: "100%" }}
+              />
+              <div className="info-line" style={{ fontSize: "0.75rem" }}>
+                <span>{MIN_SLIDE_SPEED} (slower/zoomed)</span>
+                <span>{MAX_SLIDE_SPEED} (faster/compressed)</span>
+              </div>
             </div>
           </section>
 
@@ -1043,58 +1161,76 @@ function App() {
               marginBottom: "0.75rem",
               fontSize: "0.8rem"
             }}>
-              {prompts.map((prompt) => {
-                const score = classificationScores[prompt];
-                const hasScore = score !== undefined;
-                const normalizedScore = hasScore ? (score + 1) / 2 : 0;
-                const isTop = hasScore && score === Math.max(...Object.values(classificationScores));
-                return (
-                  <div
-                    key={prompt}
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "0.25rem",
-                      padding: "0.5rem",
-                      background: isTop ? "rgba(255, 122, 61, 0.2)" : "rgba(255,255,255,0.05)",
-                      borderRadius: "4px",
-                      border: isTop ? "1px solid rgba(255, 122, 61, 0.5)" : "1px solid transparent"
-                    }}
-                  >
-                    <span style={{
-                      color: isTop ? "#ff7a3d" : "#aaa",
-                      fontWeight: isTop ? 600 : 400
-                    }}>
-                      {prompt}
-                    </span>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                      <div style={{
-                        flex: 1,
-                        height: "6px",
-                        background: "#1a1a1a",
-                        borderRadius: "3px",
-                        overflow: "hidden"
-                      }}>
-                        <div style={{
-                          width: `${normalizedScore * 100}%`,
-                          height: "100%",
-                          background: heatColor(normalizedScore),
-                          transition: "width 0.3s ease"
-                        }} />
-                      </div>
+              {(() => {
+                // Compute display scores based on mode
+                // Default (normalizeScores=false): Clamp to [0,1] - matches paper
+                // Relative mode (normalizeScores=true): Min-max normalization
+                const displayScores = Object.keys(classificationScores).length > 0
+                  ? (normalizeScores
+                      ? normalizeScoresMinMax(classificationScores)
+                      : clampScoresToPositive(classificationScores))
+                  : null;
+
+                return prompts.map((prompt) => {
+                  const rawScore = classificationScores[prompt];
+                  const hasScore = rawScore !== undefined;
+
+                  // For display intensity, use computed display scores
+                  let displayIntensity = 0;
+                  if (hasScore && displayScores) {
+                    displayIntensity = displayScores[prompt] ?? 0;
+                  }
+
+                  const isTop = hasScore && rawScore === Math.max(...Object.values(classificationScores));
+
+                  return (
+                    <div
+                      key={prompt}
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "0.25rem",
+                        padding: "0.5rem",
+                        background: isTop ? "rgba(255, 122, 61, 0.2)" : "rgba(255,255,255,0.05)",
+                        borderRadius: "4px",
+                        border: isTop ? "1px solid rgba(255, 122, 61, 0.5)" : "1px solid transparent"
+                      }}
+                    >
                       <span style={{
-                        fontFamily: "monospace",
-                        fontSize: "0.75rem",
-                        color: hasScore ? "#fff" : "#555",
-                        minWidth: "3.5rem",
-                        textAlign: "right"
+                        color: isTop ? "#ff7a3d" : "#aaa",
+                        fontWeight: isTop ? 600 : 400
                       }}>
-                        {hasScore ? (score > 0 ? "+" : "") + score.toFixed(3) : "---"}
+                        {prompt}
                       </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <div style={{
+                          flex: 1,
+                          height: "6px",
+                          background: "#1a1a1a",
+                          borderRadius: "3px",
+                          overflow: "hidden"
+                        }}>
+                          <div style={{
+                            width: `${displayIntensity * 100}%`,
+                            height: "100%",
+                            background: heatColor(displayIntensity),
+                            transition: "width 0.3s ease"
+                          }} />
+                        </div>
+                        <span style={{
+                          fontFamily: "monospace",
+                          fontSize: "0.75rem",
+                          color: hasScore ? "#fff" : "#555",
+                          minWidth: "3.5rem",
+                          textAlign: "right"
+                        }}>
+                          {hasScore ? (rawScore > 0 ? "+" : "") + rawScore.toFixed(3) : "---"}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
             </div>
 
             <div className="heatmap-wrap">
@@ -1112,9 +1248,9 @@ function App() {
               <div className="heatmap-scale">
                 <div className="scale-gradient" />
                 <div className="scale-labels">
-                  <span>-1</span>
+                  <span>1</span>
+                  <span>0.5</span>
                   <span>0</span>
-                  <span>+1</span>
                 </div>
               </div>
             </div>

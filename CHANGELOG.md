@@ -2,6 +2,47 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.2] - 2026-01-19
+
+### Added
+- **Sliding speed control**: Adjustable 1-5 pixels/frame for spectrogram and heatmap scrolling
+  - Slower = zoomed in (see more detail per time unit)
+  - Faster = compressed (see more history)
+- **normalizeScoresRef**: Ref for draw loop to access normalization setting
+
+### Changed
+- **Heatmap now respects Relative mode**: Min-max normalization applies to both scores panel AND heatmap when enabled
+- **Spectrogram draws multiple columns**: For slide speeds > 1, fills the shifted area properly
+
+### Technical Notes
+- Added `slideSpeed` state and UI slider (1-5 px/frame)
+- Spectrogram and heatmap shift by `slideSpeed` pixels per frame
+- Higher slide speed = more history visible but less temporal resolution
+
+## [0.3.1] - 2026-01-19
+
+### Added
+- **Compound prompts support**: Use commas within prompts for richer descriptions (e.g., "male speech, man speaking")
+- **Audio tiling**: Short audio is now repeated (tiled) to fill 10 seconds instead of zero-padding, maintaining signal strength
+- **Score visualization modes**:
+  - **Clamped mode (default)**: Matches FLAM paper - negative→0, positive→value. Scale: 0.0 to 1.0
+  - **Relative mode**: Min-max normalization - worst=0, best=1. Amplifies differences for weak signals
+
+### Changed
+- **Prompt delimiter changed**: Switched from comma-separated to **semicolon-separated** prompts to allow commas within compound prompts
+- **Backend parameter renamed**: `prompts_csv` → `prompts`
+- **Heatmap uses clamping**: Negative scores now clamp to 0 (matching paper visualization)
+- **Scores panel uses display modes**: Progress bars now use selected visualization mode
+
+### Fixed
+- **Custom prompts not updating**: Fixed closure issue where `classifyCurrentBuffer` wasn't seeing updated prompts - now uses `promptsRef.current`
+- **Low scores with short audio**: Audio tiling prevents signal dilution from zero-padding
+
+### Technical Notes
+- FLAM expects exactly 480,000 samples (10s @ 48kHz)
+- Short audio is tiled (repeated) to fill the window
+- Backend logs now show audio statistics: min, max, mean, std, rms
+
 ## [0.3.0] - 2026-01-19
 
 ### Added - Live FLAM Inference Integration

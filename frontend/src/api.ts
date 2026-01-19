@@ -41,9 +41,10 @@ export async function classifyAudio(
   const formData = new FormData();
   formData.append("audio", audioBlob, "audio.wav");
 
-  // If custom prompts provided, add as comma-separated string
+  // If custom prompts provided, add as semicolon-separated string
+  // Semicolons allow commas within prompts (e.g., "male speech, man speaking")
   if (customPrompts && customPrompts.length > 0) {
-    formData.append("prompts_csv", customPrompts.join(", "));
+    formData.append("prompts", customPrompts.join("; "));
   }
 
   const response = await fetch(`${API_BASE_URL}/classify`, {

@@ -1,7 +1,7 @@
 # SonoTag - Next Steps
 
 > **Last Updated**: January 19, 2026
-> **Current Phase**: Live inference wiring
+> **Current Phase**: Live inference complete, optimizations planned
 
 ---
 
@@ -15,20 +15,43 @@
 - [x] Add resampling to 48kHz (FLAM requirement)
 - [x] Cache text embeddings for default prompts
 - [x] Return similarity scores as JSON
+- [x] Add timing breakdown to API response
 
 ### Custom Prompts Feature
-- [x] Update `/classify` to accept `prompts_csv` parameter
+- [x] Update `/classify` to accept `prompts` parameter (semicolon-separated)
+- [x] Support compound prompts with commas (e.g., "male speech, man speaking")
 - [x] Compute text embeddings on-the-fly for custom prompts
 - [x] Add textarea input in frontend for user-defined prompts
 - [x] Add "Update prompts" button to parse and activate new prompts
 - [x] Update heatmap labels to show user's prompts
 
+### Live Frontend Integration
+- [x] Capture audio samples using ScriptProcessorNode
+- [x] Buffer samples for configurable duration (1-10 seconds slider)
+- [x] Convert Float32Array to WAV blob
+- [x] Send to `/classify` with current prompts
+- [x] Update `classificationScores` state with response
+- [x] Display real FLAM scores in heatmap
+- [x] Scores panel with progress bars and raw scores
+- [x] Model status indicator
+- [x] Inference timing breakdown display
+
+### Audio Processing
+- [x] Audio tiling for short clips (repeat to fill 10s window)
+- [x] Fixes signal dilution from zero-padding
+
+### Visualization
+- [x] Clamped mode (matches paper): negative→0, positive→value
+- [x] Relative mode (min-max normalization): worst=0, best=1
+- [x] Scale inverted: 1 (bright) at top, 0 (dark) at bottom
+- [x] Sliding speed control for spectrogram and heatmap (1-5 px/frame)
+
 ### Verified End-to-End
 ```bash
-# Test with custom prompts (water drops + screaming audio):
+# Test with custom prompts (semicolon-separated, compound prompts):
 curl -X POST http://localhost:8000/classify \
   -F "audio=@openflam/test/test_data/test_example.wav" \
-  -F "prompts_csv=water drops, water dripping, screaming, rain"
+  -F "prompts=water drops; water dripping; screaming; male speech, man speaking"
 
 # Results:
 # water dripping: +0.0272 👆 TOP MATCH
@@ -40,47 +63,65 @@ curl -X POST http://localhost:8000/classify \
 
 ## 🎯 Immediate Priorities
 
-### 1. Wire Frontend to Send Live Audio
-**Status**: In Progress
+### 1. Backend Thread Pool (Concurrent Inference)
+**Status**: Planned
 **Effort**: 2-3 hours
 
-Connect the React app to capture audio chunks and send to `/classify`:
+Allow multiple inference requests to run concurrently:
 
 **Tasks**:
-- [ ] Capture audio samples using ScriptProcessorNode or AudioWorklet
-- [ ] Buffer samples for configurable duration (3-5 seconds)
-- [ ] Convert Float32Array to WAV blob
-- [ ] Send to `/classify` with current prompts
-- [ ] Update `classificationScores` state with response
-- [ ] Display real FLAM scores in heatmap (replace placeholder)
+- [ ] Use `asyncio.to_thread()` or `ThreadPoolExecutor` for FLAM inference
+- [ ] Add request queuing for high-load scenarios
+- [ ] Add concurrency limit config
+- [ ] Benchmark concurrent vs sequential performance
 
 **Files to modify**:
-- `frontend/src/App.tsx` - Add audio buffering and classify loop
-- `frontend/src/api.ts` - Already has `classifyAudio()` and `audioSamplesToWavBlob()`
+- `backend/app/main.py` - Wrap inference in thread executor
 
 ---
 
-### 2. Add Classification Controls
-**Status**: Not started
-**Effort**: 1 hour
+### 2. Web Worker for Audio Capture
+**Status**: Planned
+**Effort**: 3-4 hours
 
-Add UI controls for classification behavior:
+Offload audio processing from main thread:
 
-- [ ] Toggle: Enable/disable live classification
-- [ ] Slider: Classification interval (1-10 seconds)
-- [ ] Slider: Minimum confidence threshold for display
-- [ ] Status indicator: "Classifying..." / "Ready"
+**Tasks**:
+- [ ] Create `frontend/src/workers/audio-worker.ts`
+- [ ] Move audio buffering and resampling to worker
+- [ ] Use `postMessage` to communicate with main thread
+- [ ] Fallback to main thread for browsers without Worker support
+
+**Benefits**:
+- Smoother UI during audio processing
+- Better performance on lower-end devices
+- Enables future overlapping buffer support
 
 ---
 
-### 3. Improve Heatmap Visualization
-**Status**: Not started
-**Effort**: 1 hour
+### 3. Overlapping Buffer Windows
+**Status**: Planned
+**Effort**: 2 hours
 
-- [ ] Normalize scores for better visualization (currently -1 to +1 range)
-- [ ] Add score labels on hover
-- [ ] Highlight top N matches
-- [ ] Add persistence window (only show if confident for N consecutive chunks)
+Add sliding window with overlap for smoother detection:
+
+**Tasks**:
+- [ ] Add overlap percentage control (0-50%)
+- [ ] Implement circular buffer for efficient overlap
+- [ ] Stitch inference results correctly
+- [ ] Add visual indicator for overlap regions
+
+**Current**:
+```
+[---4s buffer---][---4s buffer---]  ← Gap at boundaries
+```
+
+**With 50% overlap**:
+```
+[---4s window 1---]
+    [---4s window 2---]  ← Catches boundary events
+        [---4s window 3---]
+```
 
 ---
 
@@ -102,10 +143,6 @@ Add UI controls for classification behavior:
 - WebGPU browser support (Chrome/Edge primarily)
 - MPS (Apple Silicon) not supported by FLAM
 
-**Files to study**:
-- `openflam/src/openflam/module/model.py` - Model architecture
-- `openflam/src/openflam/hook.py` - Inference API
-
 ---
 
 ### Code Optimization
@@ -114,21 +151,23 @@ Add UI controls for classification behavior:
 
 | Area | Current | Optimization | Priority |
 |------|---------|--------------|----------|
+| Audio Capture | ScriptProcessorNode | Web Worker + AudioWorklet | High |
+| Backend Inference | Synchronous | Thread Pool | High |
+| Buffer Strategy | Non-overlapping | Sliding window with overlap | Medium |
 | Canvas Rendering | 2D Context | WebGL / OffscreenCanvas Worker | Medium |
-| Audio Processing | Main Thread | AudioWorklet | High |
+| API Calls | HTTP Polling | WebSocket streaming | Medium |
 | FFT Analysis | AnalyserNode | Custom FFT with typed arrays | Low |
 | State Updates | useState per value | useReducer batching | Low |
-| API Calls | HTTP Polling | WebSocket streaming | High |
 
 ---
 
 ## 📋 Backlog
 
 ### High Priority
+- [ ] Backend thread pool for concurrent inference
+- [ ] Web Worker for audio capture
+- [ ] Overlapping buffer windows
 - [ ] Add WebSocket endpoint for streaming audio/results
-- [ ] Implement real benchmark-based buffer recommendations
-- [ ] Add error states and UX polish for edge cases
-- [ ] Add audio recording/playback for testing prompts
 
 ### Medium Priority
 - [ ] Add local storage for user prompt presets
@@ -151,6 +190,8 @@ Before deployment:
 - [x] Test FLAM probe script with test audio
 - [x] Test `/classify` endpoint with curl
 - [x] Test `/classify` with custom prompts
+- [x] Test semicolon-separated prompts
+- [x] Test compound prompts (commas within)
 - [ ] Test mic selection on Chrome, Edge, Safari
 - [ ] Test with various sample rates (44.1kHz, 48kHz, 96kHz)
 - [ ] Test backend on CPU-only machine
@@ -179,7 +220,10 @@ Before deployment:
 | 2026-01-19 | Keep Python backend | PyTorch/OpenFLAM are Python-native, ONNX export can come later |
 | 2026-01-19 | Exclude openflam/ from git | 750MB+ weights shouldn't be in version control |
 | 2026-01-19 | Custom prompts via Form field | Flexibility for users to define any sound categories |
-| 2026-01-19 | HTTP for initial classify | Simpler to debug; upgrade to WebSocket later for streaming |
+| 2026-01-19 | Semicolon delimiter for prompts | Allows commas within compound prompts |
+| 2026-01-19 | Audio tiling instead of padding | Maintains signal strength for short clips |
+| 2026-01-19 | Clamped mode as default | Matches FLAM paper visualization |
+| 2026-01-19 | Relative mode as option | Amplifies differences for near-zero scores |
 
 ---
 
@@ -191,6 +235,11 @@ FLAM is **NOT** a fixed-class classifier. It's a language-audio similarity model
 - FLAM returns **similarity scores** (-1 to +1) for each prompt
 - **Higher scores** (closer to +1) = better match
 - **You define the categories** - can be anything ("water dripping", "my cat meowing", "train horn")
+- **Compound prompts** work: "male speech, man speaking" gives richer embeddings
+
+**FLAM expects exactly 480,000 samples** (10 seconds at 48kHz):
+- Long audio: truncated to 10 seconds
+- Short audio: **tiled (repeated)** to maintain signal strength
 
 **Example**:
 ```
@@ -202,5 +251,3 @@ Prompts:              Score:
 - water drops         +0.007
 - speech              -0.182 (not a match)
 ```
-
-This is why the default prompts ("car horn", "gunshot") scored poorly on the test audio - they weren't relevant to the content!

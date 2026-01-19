@@ -44,6 +44,9 @@ DEFAULT_PROMPTS = [
 
 SAMPLE_RATE = 48000  # FLAM requires 48kHz
 MAX_DURATION_SECONDS = 10  # Max audio duration per request
+EXPECTED_SAMPLES = (
+    SAMPLE_RATE * MAX_DURATION_SECONDS
+)  # 480,000 samples - FLAM expects exactly this
 
 
 # =============================================================================
@@ -391,20 +394,25 @@ def model_status() -> dict:
 @app.post("/classify", response_model=ClassifyResponse)
 async def classify_audio(
     audio: UploadFile = File(..., description="Audio file (WAV, MP3, etc.)"),
-    prompts_csv: Optional[str] = Form(
-        None, description="Comma-separated list of custom prompts"
+    prompts: Optional[str] = Form(
+        None,
+        description="Semicolon-separated list of custom prompts. "
+        "Use semicolons to allow commas within prompts "
+        '(e.g., "music; child singing; male speech, man speaking")',
     ),
 ) -> ClassifyResponse:
     """
     Classify audio using FLAM model.
 
     Accepts audio files, resamples to 48kHz, and returns similarity scores
-    for each prompt. Optionally accepts custom prompts as comma-separated string.
+    for each prompt. Optionally accepts custom prompts as semicolon-separated string.
+
+    Compound prompts (with commas) are supported, e.g.:
+        "music; child singing; male speech, man speaking; child speech, kid speaking"
 
     Args:
         audio: Audio file to classify
-        prompts_csv: Optional comma-separated list of custom prompts
-                     (e.g., "water drops, screaming, rain, music")
+        prompts: Optional semicolon-separated list of custom prompts
     """
     global flam_model, text_embeddings, device
 
@@ -416,17 +424,19 @@ async def classify_audio(
         )
 
     # Parse custom prompts or use defaults
-    if prompts_csv:
-        prompts = [p.strip() for p in prompts_csv.split(",") if p.strip()]
-        if not prompts:
-            prompts = DEFAULT_PROMPTS
+    # Use semicolons as delimiter to allow commas within prompts
+    # e.g., "music; child singing; male speech, man speaking"
+    if prompts:
+        prompt_list = [p.strip() for p in prompts.split(";") if p.strip()]
+        if not prompt_list:
+            prompt_list = DEFAULT_PROMPTS
             current_text_embeddings = text_embeddings
         else:
             # Compute text embeddings for custom prompts on-the-fly
             with torch.no_grad():
-                current_text_embeddings = flam_model.get_text_features(prompts)
+                current_text_embeddings = flam_model.get_text_features(prompt_list)
     else:
-        prompts = DEFAULT_PROMPTS
+        prompt_list = DEFAULT_PROMPTS
         current_text_embeddings = text_embeddings
 
     if current_text_embeddings is None:
@@ -471,6 +481,32 @@ async def classify_audio(
 
     duration_s = len(audio_array) / SAMPLE_RATE
 
+    # CRITICAL: FLAM expects exactly 480,000 samples (10 seconds at 48kHz)
+    # Instead of padding with silence (which dilutes the signal),
+    # we REPEAT the audio to fill the 10-second window
+    original_len = len(audio_array)
+    if len(audio_array) < EXPECTED_SAMPLES:
+        # Calculate how many times we need to repeat
+        repeats_needed = int(np.ceil(EXPECTED_SAMPLES / len(audio_array)))
+        # Tile the audio and truncate to exact length
+        audio_array = np.tile(audio_array, repeats_needed)[:EXPECTED_SAMPLES]
+        logger.info(
+            f"Tiled audio from {original_len} to {EXPECTED_SAMPLES} samples "
+            f"({original_len / SAMPLE_RATE:.2f}s repeated to fill 10.00s)"
+        )
+
+    # Debug: log audio statistics
+    audio_min = float(np.min(audio_array))
+    audio_max = float(np.max(audio_array))
+    audio_mean = float(np.mean(audio_array))
+    audio_std = float(np.std(audio_array))
+    audio_rms = float(np.sqrt(np.mean(audio_array**2)))
+    logger.info(
+        f"Audio stats: samples={len(audio_array)}, "
+        f"min={audio_min:.4f}, max={audio_max:.4f}, "
+        f"mean={audio_mean:.6f}, std={audio_std:.4f}, rms={audio_rms:.4f}"
+    )
+
     # Convert to tensor
     audio_tensor = torch.tensor(audio_array).unsqueeze(0).to(device)
 
@@ -496,7 +532,7 @@ async def classify_audio(
             # Convert to Python floats
             scores = {
                 prompt: float(score)
-                for prompt, score in zip(prompts, similarities.cpu().numpy())
+                for prompt, score in zip(prompt_list, similarities.cpu().numpy())
             }
     except Exception as e:
         logger.error(f"Inference failed: {e}")
@@ -510,7 +546,7 @@ async def classify_audio(
 
     return ClassifyResponse(
         scores=scores,
-        prompts=prompts,
+        prompts=prompt_list,
         duration_s=round(duration_s, 3),
         sample_rate=SAMPLE_RATE,
         device=str(device),

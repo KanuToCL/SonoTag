@@ -395,11 +395,11 @@ button:hover {
   border-radius: 6px;
   background: linear-gradient(
     180deg,
-    #0b0f14 0%,
-    #5a3a20 35%,
-    #b56a38 60%,
-    #f2a35d 80%,
-    #fbd9a4 100%
+    #fbd9a4 0%,
+    #f2a35d 20%,
+    #b56a38 40%,
+    #5a3a20 65%,
+    #0b0f14 100%
   );
   border: 1px solid rgba(34, 48, 69, 0.9);
 }

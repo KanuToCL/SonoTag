@@ -1,7 +1,7 @@
 # FLAM Integration Guide
 
 > **Last Updated**: January 19, 2026
-> **Status**: ✅ Backend integration complete, wiring frontend in progress
+> **Status**: ✅ Fully integrated with live classification
 
 This document covers how to set up and use OpenFLAM in SonoTag.
 
@@ -34,6 +34,14 @@ Prompts:              Score:
 - water drops         +0.007
 - speech              -0.182 (not a match)
 ```
+
+### Audio Input Requirements
+
+FLAM expects **exactly 480,000 samples** (10 seconds at 48kHz). The backend handles this automatically:
+- **Longer audio**: Truncated to 10 seconds
+- **Shorter audio**: **Tiled (repeated)** to fill 10 seconds - this maintains signal strength
+
+> **Note**: We use tiling instead of zero-padding because padding with silence dilutes the detection signal.
 
 ---
 
@@ -112,11 +120,20 @@ curl -X POST http://localhost:8000/classify \
   | python3 -m json.tool
 ```
 
-### Test with Custom Prompts
+### Test with Custom Prompts (Semicolon-Separated)
 ```bash
 curl -X POST http://localhost:8000/classify \
   -F "audio=@openflam/test/test_data/test_example.wav" \
-  -F "prompts_csv=water drops, water dripping, screaming, rain, music" \
+  -F "prompts=water drops; water dripping; screaming; rain; music" \
+  | python3 -m json.tool
+```
+
+### Test with Compound Prompts
+Compound prompts (with commas) describe sounds in multiple ways for better detection:
+```bash
+curl -X POST http://localhost:8000/classify \
+  -F "audio=@openflam/test/test_data/test_example.wav" \
+  -F "prompts=music; child singing; male speech, man speaking; child speech, kid speaking" \
   | python3 -m json.tool
 ```
 
@@ -180,7 +197,7 @@ Classify audio against prompts:
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | `audio` | File | Yes | Audio file (WAV, MP3, FLAC, etc.) |
-| `prompts_csv` | String | No | Comma-separated custom prompts |
+| `prompts` | String | No | **Semicolon-separated** custom prompts. Commas allowed within prompts for compound descriptions (e.g., "male speech, man speaking") |
 
 **Response**:
 ```json
@@ -200,9 +217,19 @@ Classify audio against prompts:
 ### Prompt Input
 
 The frontend includes a textarea for custom prompts:
-1. Enter comma-separated prompts (e.g., "water drops, screaming, rain")
-2. Click "Update prompts"
-3. Prompts are sent with each classify request
+1. Enter **semicolon-separated** prompts (e.g., "water drops; screaming; rain")
+2. Commas are allowed within prompts for compound descriptions (e.g., "male speech, man speaking")
+3. Click "Update prompts"
+4. Prompts are sent with each classify request
+
+### Score Visualization
+
+The frontend supports two display modes:
+
+| Mode | Description |
+|------|-------------|
+| **Clamped (default)** | Matches paper visualization: negative→0, positive→value. Scale: 0.0 to 1.0 |
+| **Relative (normalized)** | Min-max normalization: worst=0, best=1. Amplifies differences |
 
 ### API Utilities
 
@@ -268,9 +295,16 @@ console.log(result.scores);
 - Consider upgrading to GPU or using smaller model variant
 
 ### Custom prompts not working
-- Ensure prompts are comma-separated
+- Ensure prompts are **semicolon-separated** (not comma-separated)
+- Commas within prompts are fine (e.g., "male speech, man speaking")
 - Check for leading/trailing whitespace
 - Verify backend was restarted after code changes
+
+### Low scores / all scores near zero
+- Check audio is actually reaching the microphone (check RMS in backend logs)
+- Verify audio is not silent (check browser meter)
+- Try tiling: shorter audio is repeated to fill 10 seconds
+- Check prompts match the expected sounds
 
 ---
 
