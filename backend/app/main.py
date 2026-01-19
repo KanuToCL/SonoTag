@@ -1,16 +1,103 @@
-from typing import Optional
+import io
 import json
+import logging
 import os
 import platform
 import re
 import subprocess
+from contextlib import asynccontextmanager
+from typing import Optional
 
+import librosa
+import numpy as np
 import psutil
-from fastapi import FastAPI
+import torch
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-app = FastAPI(title="FLAM Backend", version="0.1.0")
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# =============================================================================
+# Global State for FLAM Model
+# =============================================================================
+
+flam_model = None
+text_embeddings = None
+device = None
+
+# Default prompts for audio classification
+DEFAULT_PROMPTS = [
+    "speech",
+    "music",
+    "applause",
+    "silence",
+    "car horn",
+    "engine running",
+    "dog barking",
+    "glass breaking",
+    "gunshot",
+    "siren",
+]
+
+SAMPLE_RATE = 48000  # FLAM requires 48kHz
+MAX_DURATION_SECONDS = 10  # Max audio duration per request
+
+
+# =============================================================================
+# Lifespan: Model Loading at Startup
+# =============================================================================
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Load FLAM model at startup, cleanup on shutdown."""
+    global flam_model, text_embeddings, device
+
+    try:
+        import openflam
+
+        # Determine device (MPS not supported by FLAM, falls back to CPU)
+        if torch.cuda.is_available():
+            device = torch.device("cuda")
+        else:
+            device = torch.device("cpu")
+
+        logger.info(f"Loading FLAM model on device: {device}")
+
+        # Load model
+        model_path = os.getenv("FLAM_MODEL_PATH", "openflam_ckpt")
+        flam_model = openflam.OpenFLAM(
+            model_name="v1-base",
+            default_ckpt_path=model_path,
+        ).to(device)
+
+        # Pre-compute text embeddings for default prompts
+        with torch.no_grad():
+            text_embeddings = flam_model.get_text_features(DEFAULT_PROMPTS)
+
+        logger.info(
+            f"FLAM model loaded. Text embeddings cached for {len(DEFAULT_PROMPTS)} prompts."
+        )
+
+    except ImportError:
+        logger.warning(
+            "OpenFLAM not installed. Inference endpoints will return mock data."
+        )
+    except Exception as e:
+        logger.error(f"Failed to load FLAM model: {e}")
+
+    yield  # App runs here
+
+    # Cleanup
+    logger.info("Shutting down FLAM model...")
+    flam_model = None
+    text_embeddings = None
+
+
+app = FastAPI(title="FLAM Backend", version="0.2.0", lifespan=lifespan)
 
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(
@@ -132,9 +219,9 @@ def _get_windows_video_controller() -> list[dict]:
         gpus.append(
             {
                 "name": item.get("Name") if isinstance(item, dict) else None,
-                "memory_bytes": item.get("AdapterRAM")
-                if isinstance(item, dict)
-                else None,
+                "memory_bytes": (
+                    item.get("AdapterRAM") if isinstance(item, dict) else None
+                ),
             }
         )
     return gpus
@@ -162,9 +249,9 @@ def _get_windows_dedicated_memory() -> list[dict]:
         gpus.append(
             {
                 "name": item.get("Name") if isinstance(item, dict) else None,
-                "memory_bytes": item.get("DedicatedVideoMemory")
-                if isinstance(item, dict)
-                else None,
+                "memory_bytes": (
+                    item.get("DedicatedVideoMemory") if isinstance(item, dict) else None
+                ),
             }
         )
     return gpus
@@ -252,4 +339,123 @@ def recommend_buffer(payload: RecommendRequest) -> RecommendResponse:
     return RecommendResponse(
         recommended_buffer_s=recommended,
         rationale=rationale,
+    )
+
+
+# =============================================================================
+# Inference Endpoints
+# =============================================================================
+
+
+class ClassifyResponse(BaseModel):
+    """Response from audio classification."""
+
+    scores: dict[str, float]
+    prompts: list[str]
+    duration_s: float
+    sample_rate: int
+    device: str
+
+
+class PromptsResponse(BaseModel):
+    """Available prompts for classification."""
+
+    prompts: list[str]
+    count: int
+
+
+@app.get("/prompts", response_model=PromptsResponse)
+def get_prompts() -> PromptsResponse:
+    """Get the current list of prompts used for classification."""
+    return PromptsResponse(
+        prompts=DEFAULT_PROMPTS,
+        count=len(DEFAULT_PROMPTS),
+    )
+
+
+@app.get("/model-status")
+def model_status() -> dict:
+    """Check if FLAM model is loaded and ready."""
+    return {
+        "loaded": flam_model is not None,
+        "device": str(device) if device else None,
+        "prompts_cached": text_embeddings is not None,
+        "prompt_count": len(DEFAULT_PROMPTS) if text_embeddings is not None else 0,
+    }
+
+
+@app.post("/classify", response_model=ClassifyResponse)
+async def classify_audio(
+    audio: UploadFile = File(..., description="Audio file (WAV, MP3, etc.)"),
+) -> ClassifyResponse:
+    """
+    Classify audio using FLAM model.
+
+    Accepts audio files, resamples to 48kHz, and returns similarity scores
+    for each prompt in the default prompt list.
+    """
+    global flam_model, text_embeddings, device
+
+    # Check if model is loaded
+    if flam_model is None or text_embeddings is None:
+        raise HTTPException(
+            status_code=503,
+            detail="FLAM model not loaded. Check server logs.",
+        )
+
+    # Read audio file
+    try:
+        audio_bytes = await audio.read()
+        audio_buffer = io.BytesIO(audio_bytes)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to read audio file: {e}",
+        )
+
+    # Load and resample audio to 48kHz
+    try:
+        audio_array, sr = librosa.load(audio_buffer, sr=SAMPLE_RATE, mono=True)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to decode audio: {e}. Ensure file is a valid audio format.",
+        )
+
+    # Limit duration
+    max_samples = int(SAMPLE_RATE * MAX_DURATION_SECONDS)
+    if len(audio_array) > max_samples:
+        audio_array = audio_array[:max_samples]
+
+    duration_s = len(audio_array) / SAMPLE_RATE
+
+    # Convert to tensor
+    audio_tensor = torch.tensor(audio_array).unsqueeze(0).to(device)
+
+    # Run inference
+    try:
+        with torch.no_grad():
+            audio_features = flam_model.get_global_audio_features(audio_tensor)
+
+            # Compute cosine similarity
+            similarities = (text_embeddings @ audio_features.T).squeeze(1)
+
+            # Convert to Python floats
+            scores = {
+                prompt: float(score)
+                for prompt, score in zip(DEFAULT_PROMPTS, similarities.cpu().numpy())
+            }
+    except Exception as e:
+        logger.error(f"Inference failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Inference failed: {e}",
+        )
+
+    return ClassifyResponse(
+        scores=scores,
+        prompts=DEFAULT_PROMPTS,
+        duration_s=round(duration_s, 3),
+        sample_rate=SAMPLE_RATE,
+        device=str(device),
     )

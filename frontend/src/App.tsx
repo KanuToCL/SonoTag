@@ -6,67 +6,18 @@ import {
   useState,
   type ChangeEvent,
 } from "react";
+import type {
+  BackendInfo,
+  BrowserInfo,
+  FreqRange,
+  HeatColorStop,
+  ModelStatusResponse,
+  Recommendation,
+} from "./types";
 
 // =============================================================================
-// Types & Interfaces
+// Types & Interfaces (local to this component)
 // =============================================================================
-
-interface CategoryBand {
-  label: string;
-  start: number;
-  end: number;
-}
-
-interface HeatColorStop {
-  stop: number;
-  color: [number, number, number];
-}
-
-interface BackendCpuInfo {
-  logical_cores?: number;
-  physical_cores?: number;
-  model?: string;
-}
-
-interface BackendMemoryInfo {
-  total_bytes?: number;
-}
-
-interface BackendGpuInfo {
-  name?: string;
-  memory_bytes?: number;
-}
-
-interface BackendInfo {
-  platform?: string;
-  python_version?: string;
-  cpu?: BackendCpuInfo;
-  cpu_count?: number; // Legacy fallback
-  memory?: BackendMemoryInfo;
-  gpus?: BackendGpuInfo[];
-  env?: {
-    FLAM_MODEL_PATH?: string;
-  };
-}
-
-interface Recommendation {
-  buffer: number | null;
-  rationale: string;
-  source: string;
-}
-
-interface BrowserInfo {
-  userAgent: string;
-  platform: string;
-  hardwareConcurrency: number;
-  deviceMemory: number;
-  language: string;
-}
-
-interface FreqRange {
-  min: number;
-  max: number;
-}
 
 type PermissionState = "unknown" | "granted" | "denied";
 type MonitoringStatus = "idle" | "running" | "stopped";
@@ -78,13 +29,25 @@ type MonitoringStatus = "idle" | "running" | "stopped";
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
-const CATEGORY_BANDS: CategoryBand[] = [
-  { label: "man speaking", start: 0.02, end: 0.12 },
-  { label: "shouting", start: 0.1, end: 0.22 },
-  { label: "rock music", start: 0.18, end: 0.5 },
-  { label: "car engine accel", start: 0.04, end: 0.16 },
-  { label: "hard braking", start: 0.06, end: 0.2 },
-  { label: "glass breaking", start: 0.32, end: 0.7 },
+// Buffer size for audio capture (in seconds)
+const AUDIO_BUFFER_SECONDS = 5;
+// Target sample rate for FLAM
+const TARGET_SAMPLE_RATE = 48000;
+// Minimum interval between classification requests (ms)
+const CLASSIFY_INTERVAL_MS = 3000;
+
+// Default category bands (placeholder until FLAM prompts are loaded)
+const DEFAULT_CATEGORY_BANDS = [
+  "speech",
+  "music",
+  "applause",
+  "silence",
+  "car horn",
+  "engine running",
+  "dog barking",
+  "glass breaking",
+  "gunshot",
+  "siren",
 ];
 
 const HEAT_COLORS: HeatColorStop[] = [
@@ -208,6 +171,13 @@ function App() {
   const [freqMin, setFreqMin] = useState<number>(0);
   const [freqMax, setFreqMax] = useState<number>(12000);
 
+  // FLAM inference state
+  const [modelStatus, setModelStatus] = useState<ModelStatusResponse | null>(null);
+  const [prompts, setPrompts] = useState<string[]>(DEFAULT_CATEGORY_BANDS);
+  const [classificationScores, setClassificationScores] = useState<Record<string, number>>({});
+  const [isClassifying, setIsClassifying] = useState<boolean>(false);
+  const [classifyError, setClassifyError] = useState<string>("");
+
   // ---------------------------------------------------------------------------
   // Refs
   // ---------------------------------------------------------------------------
@@ -218,6 +188,11 @@ function App() {
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
+
+  // Audio buffer for classification
+  const audioBufferRef = useRef<Float32Array[]>([]);
+  const lastClassifyTimeRef = useRef<number>(0);
+  const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
 
   // ---------------------------------------------------------------------------
   // Derived Values
@@ -445,9 +420,11 @@ function App() {
         }
 
         heatmapContext.drawImage(heatmapCanvas, -1, 0);
-        const rowHeight = heatmapCanvas.height / CATEGORY_BANDS.length;
-        CATEGORY_BANDS.forEach((band, row) => {
-          const value = averageBand(freqData, band.start, band.end);
+        const rowHeight = heatmapCanvas.height / prompts.length;
+        prompts.forEach((prompt, row) => {
+          // Use classification scores if available, otherwise use placeholder
+          const score = classificationScores[prompt];
+          const value = score !== undefined ? (score + 1) / 2 : 0; // Normalize -1 to 1 range to 0 to 1
           heatmapContext.fillStyle = heatColor(value);
           heatmapContext.fillRect(
             heatmapCanvas.width - 1,
@@ -800,8 +777,8 @@ function App() {
             </div>
             <div className="heatmap-wrap">
               <div className="heatmap-labels">
-                {CATEGORY_BANDS.map((band) => (
-                  <span key={band.label}>{band.label}</span>
+                {prompts.map((prompt) => (
+                  <span key={prompt}>{prompt}</span>
                 ))}
               </div>
               <canvas
