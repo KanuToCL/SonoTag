@@ -154,7 +154,10 @@ For users who want all controls visible at once.
 
 ---
 
-## Proposed Layout: "Immersive Flow" ⭐ RECOMMENDED
+## Proposed Layout: "Immersive Flow" ⭐ RECOMMENDED — ✅ IMPLEMENTED (v0.4.2)
+
+> **Status**: Implemented in v0.4.2 on January 19, 2026
+> **Files**: `frontend/src/App.tsx`, `frontend/src/styles.css`
 
 A visualization-first design with dynamic elements that create a sense of audio "flowing" through the interface.
 
@@ -308,6 +311,73 @@ const drawPendingZone = (ctx: CanvasRenderingContext2D) => {
   }
 };
 ```
+
+### ✅ Implementation Notes (v0.4.2)
+
+The Immersive Flow layout was implemented with the following components:
+
+#### Files Modified
+- `frontend/src/App.tsx` - Added ~500 lines for Immersive layout render, state, and helpers
+- `frontend/src/styles.css` - Added ~650 lines of CSS for Immersive layout styling
+
+#### Key Implementation Details
+
+1. **Layout Toggle State**
+   ```tsx
+   const [layoutMode, setLayoutMode] = useState<"immersive" | "classic">("immersive");
+   ```
+   - Immersive is now the default layout
+   - Toggle buttons in both layouts to switch between them
+
+2. **Dynamic Label Styling** - Implemented as `getDynamicLabelStyle()`:
+   ```tsx
+   const getDynamicLabelStyle = (score: number): React.CSSProperties => {
+     const normalizedScore = Math.max(0, Math.min(1, score));
+     return {
+       opacity: 0.3 + (normalizedScore * 0.7),
+       fontWeight: 400 + Math.round(normalizedScore * 300),
+       color: `rgba(255, ${180 + Math.round(normalizedScore * 75)}, ${150 + Math.round(normalizedScore * 50)}, ${0.6 + normalizedScore * 0.4})`,
+       transition: 'all 0.3s ease',
+     };
+   };
+   ```
+
+3. **Canvas Width Synchronization** - Solved the speed mismatch:
+   - Both spectrogram and heatmap sections use flexbox with `display: flex`
+   - Canvas wrappers use `flex: 1` to fill available space
+   - Spectrogram has a 220px transparent spacer (`.spectrogram-label-spacer`)
+   - Heatmap has the 220px labels panel (`.dynamic-labels`)
+   - Result: Both canvases have identical visible widths → identical scroll speeds
+
+4. **Heatmap Always-Shift Fix**:
+   ```tsx
+   // Draw heatmap - ALWAYS shift to stay in sync with spectrogram
+   heatmapContext.drawImage(heatmapCanvas, -1, 0);
+   ```
+   - Previously only shifted when scores existed, causing desync
+   - Now shifts unconditionally like the spectrogram
+
+5. **Labels in Original Order**:
+   - `promptsWithScores` computed using `prompts.map()` to preserve original order
+   - Labels stay aligned to their corresponding heatmap rows
+   - Sorting only affects the scores panel in Classic mode
+
+6. **Settings Slide-Out Panel**:
+   - `.settings-overlay` with opacity transition
+   - `.settings-panel` with `transform: translateX()` animation
+   - Full settings controls moved to panel (prompts, modes, inference, frequency, timing)
+
+7. **Compact Footer Controls**:
+   - Video player or mic controls
+   - Preset buttons (Action, Sports, Music)
+   - Buffer duration slider
+   - Model status badge
+
+#### CSS Architecture
+- New CSS variables for darker theme (`--bg: #090d12`)
+- Immersive styles in `/* IMMERSIVE FLOW LAYOUT */` section (~650 lines)
+- Legacy styles preserved in `/* LEGACY STYLES */` section
+- Mobile responsive adjustments for `.immersive-footer`, `.dynamic-labels`, `.settings-panel`
 
 ### Comparison: Current vs Immersive Flow
 

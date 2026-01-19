@@ -2,6 +2,51 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.2] - 2026-01-19
+
+### Added - Immersive Flow Layout ✨
+- **New "Immersive Flow" layout**: Full-screen, visualization-first design optimized for real-time audio analysis
+  - **Full-width spectrogram & heatmap**: Edge-to-edge visualization with synchronized scroll speeds
+  - **Edge fade vignette effect**: Subtle gradient overlay (120px) on left edges for depth
+  - **Dynamic label styling**: Labels automatically adjust opacity (0.3→1.0), font-weight (400→700), and color warmth based on classification score
+  - **Right-side labels panel**: 220px fixed-width panel with gradient fade, labels stay aligned to heatmap rows
+  - **Synchronized canvas widths**: Both spectrogram and heatmap share same visible width via spacer element, ensuring identical scroll speeds
+
+- **Layout toggle**: Switch between "Immersive Flow" and "Classic" layouts
+  - Footer button in Immersive mode: "Classic View"
+  - Header button in Classic mode: "✨ Immersive View"
+
+- **Settings slide-out panel**: Clean settings UI in Immersive mode
+  - Sound categories (prompts) editor
+  - Detection mode toggles (relative mode, sort by score)
+  - Inference settings (buffer duration, slide speed)
+  - Frequency range controls
+  - Timing breakdown display
+  - System info display
+
+- **Compact footer controls bar**: Bottom bar with:
+  - Video player or microphone controls
+  - Preset buttons (🎬 Action, 🏈 Sports, 🎵 Music)
+  - Buffer duration slider
+  - Model status badge with inference count
+
+### Changed
+- **Sort by score default**: Now ON by default for better UX in Immersive mode
+- **Background color**: Darker base color (#090d12) for better contrast with visualizations
+- **Video player size**: Increased from 120×68px to 200×112px for better visibility
+
+### Fixed
+- **Heatmap/spectrogram sync**: Heatmap now ALWAYS shifts left regardless of whether scores exist, staying perfectly synchronized with spectrogram
+- **Canvas scroll speed mismatch**: Added `.spectrogram-label-spacer` (220px) to match heatmap's label panel width
+- **Labels alignment**: Dynamic labels now left-aligned and vertically centered to corresponding heatmap rows
+- **JSX structure corruption**: Fixed canvas wrapper hierarchy (spectrogram-canvas-wrap → canvas → spacer)
+
+### Technical Notes
+- `getDynamicLabelStyle()` helper function computes opacity, fontWeight, and color based on normalized score
+- `promptsWithScores` computed in original order (not sorted) to maintain heatmap row alignment
+- CSS flexbox layout with `flex: 1` canvas wrappers and fixed-width spacers for width synchronization
+- Settings panel uses overlay + slide-in animation with `transform: translateX()`
+
 ## [0.4.1] - 2026-01-19
 
 ### Added - Documentation & Planning

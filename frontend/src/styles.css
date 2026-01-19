@@ -1,8 +1,8 @@
 @import url("https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600&display=swap");
 
 :root {
-  --bg: #0b0f14;
-  --bg-accent: #121a26;
+  --bg: #090d12;
+  --bg-accent: #0f1520;
   --panel: #121a26;
   --panel-soft: #0f1520;
   --border: #223045;
@@ -24,15 +24,682 @@ body {
   margin: 0;
   font-family: "Space Grotesk", "Segoe UI", sans-serif;
   color: var(--text);
-  background: radial-gradient(
-      circle at 10% 10%,
-      rgba(42, 209, 255, 0.15),
-      transparent 45%
-    ),
-    radial-gradient(circle at 90% 0%, rgba(255, 122, 61, 0.2), transparent 50%),
-    linear-gradient(180deg, var(--bg) 0%, var(--bg-accent) 100%);
+  background: var(--bg);
   min-height: 100vh;
 }
+
+/* =============================================================================
+   IMMERSIVE FLOW LAYOUT
+   ============================================================================= */
+
+.immersive-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--bg);
+}
+
+/* Top Header - Minimal */
+.immersive-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 24px;
+  border-bottom: 1px solid rgba(34, 48, 69, 0.4);
+  background: rgba(9, 13, 18, 0.95);
+  z-index: 100;
+}
+
+.immersive-header .logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: "Sora", sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.immersive-header .logo-icon {
+  font-size: 20px;
+}
+
+.immersive-header .controls-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.immersive-header .mode-tabs {
+  display: flex;
+  background: rgba(15, 21, 32, 0.8);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.immersive-header .mode-tab {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.immersive-header .mode-tab.active {
+  background: rgba(255, 122, 61, 0.2);
+  color: var(--accent);
+}
+
+.immersive-header .mode-tab:hover:not(.active) {
+  color: var(--text);
+}
+
+.immersive-header .settings-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: rgba(15, 21, 32, 0.8);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.immersive-header .settings-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.immersive-header .status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.immersive-header .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.immersive-header .status-dot.active {
+  background: var(--success);
+  box-shadow: 0 0 8px var(--success);
+  animation: pulse 2s ease infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Main Visualization Area */
+.immersive-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 24px;
+  gap: 12px;
+  overflow: hidden;
+}
+
+/* Visualization Container with Edge Fade */
+.viz-container {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+/* Spectrogram Section */
+.spectrogram-section {
+  position: relative;
+  height: 200px;
+  min-height: 150px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--canvas);
+  border: 1px solid rgba(34, 48, 69, 0.5);
+  display: flex;
+}
+
+.spectrogram-section::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 120px;
+  background: linear-gradient(to right,
+    rgba(9, 13, 18, 1) 0%,
+    rgba(9, 13, 18, 0.8) 40%,
+    rgba(9, 13, 18, 0) 100%
+  );
+  pointer-events: none;
+  z-index: 10;
+}
+
+.spectrogram-label {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: rgba(154, 167, 189, 0.6);
+  z-index: 5;
+}
+
+/* Heatmap Section with Dynamic Labels */
+.heatmap-section {
+  position: relative;
+  flex: 1;
+  min-height: 200px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--canvas);
+  border: 1px solid rgba(34, 48, 69, 0.5);
+  display: flex;
+}
+
+.heatmap-section::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 120px;
+  background: linear-gradient(to right,
+    rgba(9, 13, 18, 1) 0%,
+    rgba(9, 13, 18, 0.8) 40%,
+    rgba(9, 13, 18, 0) 100%
+  );
+  pointer-events: none;
+  z-index: 10;
+}
+
+.heatmap-canvas-wrap {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.heatmap-canvas-wrap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+
+/* Spectrogram also needs label spacer for sync */
+.spectrogram-canvas-wrap {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.spectrogram-canvas-wrap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+
+.spectrogram-label-spacer {
+  width: 220px;
+  flex-shrink: 0;
+  background: transparent;
+}
+
+/* Dynamic Labels Panel */
+.dynamic-labels {
+  width: 220px;
+  padding: 0 12px 0 8px;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(to left,
+    rgba(9, 13, 18, 0.95) 0%,
+    rgba(9, 13, 18, 0.7) 60%,
+    rgba(9, 13, 18, 0) 100%
+  );
+  z-index: 5;
+}
+
+.dynamic-label {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  font-size: 11px;
+  transition: all 0.3s ease;
+  flex: 1;
+  min-height: 0;
+}
+
+.dynamic-label .label-text {
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  transition: all 0.3s ease;
+}
+
+.dynamic-label .label-score {
+  font-family: "Sora", monospace;
+  font-size: 10px;
+  min-width: 36px;
+  text-align: right;
+  opacity: 0.7;
+}
+
+.heatmap-label {
+  position: absolute;
+  top: 12px;
+  left: 140px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: rgba(154, 167, 189, 0.6);
+  z-index: 15;
+}
+
+/* Bottom Controls Bar */
+.immersive-footer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 24px;
+  border-top: 1px solid rgba(34, 48, 69, 0.4);
+  background: rgba(9, 13, 18, 0.95);
+  flex-wrap: wrap;
+}
+
+.footer-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.footer-section.grow {
+  flex: 1;
+}
+
+.footer-divider {
+  width: 1px;
+  height: 24px;
+  background: rgba(34, 48, 69, 0.6);
+}
+
+/* Video Player in Footer */
+.video-player-mini {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(15, 21, 32, 0.8);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  max-width: 500px;
+}
+
+.video-player-mini video {
+  width: 200px;
+  height: 112px;
+  border-radius: 4px;
+  background: #000;
+  cursor: pointer;
+}
+
+.video-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.video-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.video-status {
+  font-size: 11px;
+  color: var(--success);
+}
+
+/* Preset Buttons */
+.preset-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  background: rgba(15, 21, 32, 0.8);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.preset-btn:hover {
+  color: var(--text);
+  border-color: rgba(255, 122, 61, 0.5);
+}
+
+.preset-btn.active {
+  background: rgba(255, 122, 61, 0.2);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Compact Controls */
+.compact-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.compact-control label {
+  white-space: nowrap;
+}
+
+.compact-control input[type="range"] {
+  width: 80px;
+  height: 4px;
+  accent-color: var(--accent);
+}
+
+.compact-control .value {
+  min-width: 24px;
+  text-align: right;
+  color: var(--text);
+}
+
+/* Model Status Badge */
+.model-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(15, 21, 32, 0.8);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.model-badge.ready {
+  border-color: rgba(92, 227, 162, 0.4);
+  color: var(--success);
+}
+
+.model-badge .badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Settings Slide-Out Panel */
+.settings-overlay {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.settings-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.settings-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 360px;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  transform: translateX(100%);
+  transition: transform 0.3s ease;
+  z-index: 1001;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-overlay.open .settings-panel {
+  transform: translateX(0);
+}
+
+.settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.settings-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-close:hover {
+  color: var(--text);
+  border-color: var(--danger);
+}
+
+.settings-content {
+  flex: 1;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-section h3 {
+  margin: 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--muted);
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(34, 48, 69, 0.4);
+}
+
+.settings-section textarea {
+  width: 100%;
+  min-height: 100px;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(10, 16, 24, 0.8);
+  color: var(--text);
+}
+
+.settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-row label {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.settings-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.settings-row input[type="range"] {
+  flex: 1;
+  max-width: 120px;
+  accent-color: var(--accent);
+}
+
+.settings-row .value {
+  min-width: 40px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* YouTube URL Input */
+.youtube-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.youtube-input-row input {
+  flex: 1;
+  padding: 10px 12px;
+  font-size: 13px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(10, 16, 24, 0.8);
+  color: var(--text);
+}
+
+.youtube-input-row button {
+  padding: 10px 16px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* Mic Capture in Settings */
+.mic-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mic-controls select {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 13px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(10, 16, 24, 0.8);
+  color: var(--text);
+}
+
+.mic-controls .btn-row {
+  display: flex;
+  gap: 8px;
+}
+
+.mic-controls button {
+  flex: 1;
+  padding: 10px;
+  font-size: 12px;
+}
+
+/* Timing Breakdown */
+.timing-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  font-size: 12px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+}
+
+.timing-grid .timing-label {
+  color: var(--muted);
+}
+
+.timing-grid .timing-value {
+  text-align: right;
+  color: var(--text);
+}
+
+.timing-grid .timing-value.highlight {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* System Info */
+.system-info-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  font-size: 12px;
+}
+
+.system-info-grid span:nth-child(odd) {
+  color: var(--muted);
+}
+
+.system-info-grid span:nth-child(even) {
+  text-align: right;
+  color: var(--text);
+}
+
+/* =============================================================================
+   LEGACY STYLES (for fallback/compatibility)
+   ============================================================================= */
 
 .page {
   max-width: 1200px;
@@ -479,6 +1146,28 @@ button:hover {
 
   .scale-labels {
     flex-direction: row;
+    width: 100%;
+  }
+
+  /* Immersive layout mobile */
+  .immersive-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .footer-section {
+    flex-wrap: wrap;
+  }
+
+  .footer-divider {
+    display: none;
+  }
+
+  .dynamic-labels {
+    width: 140px;
+  }
+
+  .settings-panel {
     width: 100%;
   }
 }

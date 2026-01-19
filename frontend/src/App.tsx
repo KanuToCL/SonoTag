@@ -317,6 +317,20 @@ const heatColor = (value: number): string => {
   return `rgb(${r}, ${g}, ${b})`;
 };
 
+/**
+ * Get dynamic label styling based on score (Immersive Flow).
+ * Higher scores = more prominent (bold, bright, opaque).
+ */
+const getDynamicLabelStyle = (score: number): React.CSSProperties => {
+  const normalizedScore = Math.max(0, Math.min(1, score));
+  return {
+    opacity: 0.3 + (normalizedScore * 0.7), // 0.3 to 1.0
+    fontWeight: 400 + Math.round(normalizedScore * 300), // 400 to 700
+    color: `rgba(255, ${180 + Math.round(normalizedScore * 75)}, ${150 + Math.round(normalizedScore * 50)}, ${0.6 + normalizedScore * 0.4})`,
+    transition: 'all 0.3s ease',
+  };
+};
+
 // =============================================================================
 // App Component
 // =============================================================================
@@ -356,8 +370,10 @@ function App() {
   const [slideSpeed, setSlideSpeed] = useState<number>(DEFAULT_SLIDE_SPEED); // Pixels per frame for spectrogram/heatmap
 const [musicDecomposition, setMusicDecomposition] = useState<boolean>(false); // Toggle for instrument prompts
   const [scoresExpanded, setScoresExpanded] = useState<boolean>(false); // Toggle for expanded scores list
-  const [sortByScore, setSortByScore] = useState<boolean>(false); // Toggle to sort scores high to low
+const [sortByScore, setSortByScore] = useState<boolean>(true); // Sort by score ON by default (Immersive Flow)
     const [inputMode, setInputMode] = useState<InputMode>("youtube"); // Tab: microphone or youtube
+    const [settingsOpen, setSettingsOpen] = useState<boolean>(false); // Settings slide-out panel
+      const [layoutMode, setLayoutMode] = useState<"immersive" | "classic">("immersive"); // Layout toggle
 
 // YouTube Analysis state
   const [youtubeUrl, setYoutubeUrl] = useState<string>("");
@@ -498,18 +514,17 @@ if (!youtubeAnalyzing || !heatmapRef.current || !spectrogramRef.current) return;
           }
         }
 
-        // Draw heatmap
-        if (Object.keys(classificationScoresRef.current).length > 0) {
-          // Shift heatmap left by 1 pixel
-          heatmapContext.drawImage(heatmapCanvas, -1, 0);
+        // Draw heatmap - ALWAYS shift to stay in sync with spectrogram
+        heatmapContext.drawImage(heatmapCanvas, -1, 0);
 
-          const currentPrompts = promptsRef.current;
-          const currentScores = classificationScoresRef.current;
-          const useNormalization = normalizeScoresRef.current;
-          const rowHeight = heatmapCanvas.height / currentPrompts.length;
+        const currentPrompts = promptsRef.current;
+        const currentScores = classificationScoresRef.current;
+        const useNormalization = normalizeScoresRef.current;
+        const rowHeight = heatmapCanvas.height / currentPrompts.length;
 
-          // Compute display values
-          let displayValues: Record<string, number> = {};
+        // Compute display values (use 0 if no scores yet)
+        let displayValues: Record<string, number> = {};
+        if (Object.keys(currentScores).length > 0) {
           if (useNormalization) {
             const values = Object.values(currentScores);
             const min = Math.min(...values);
@@ -523,18 +538,18 @@ if (!youtubeAnalyzing || !heatmapRef.current || !spectrogramRef.current) return;
               displayValues[key] = Math.max(0, Math.min(1, val));
             }
           }
-
-          currentPrompts.forEach((prompt, row) => {
-            const value = displayValues[prompt] ?? 0;
-            heatmapContext.fillStyle = heatColor(value);
-            heatmapContext.fillRect(
-              heatmapCanvas.width - 1,
-              row * rowHeight,
-              1,
-              rowHeight
-            );
-          });
         }
+
+        currentPrompts.forEach((prompt, row) => {
+          const value = displayValues[prompt] ?? 0;
+          heatmapContext.fillStyle = heatColor(value);
+          heatmapContext.fillRect(
+            heatmapCanvas.width - 1,
+            row * rowHeight,
+            1,
+            rowHeight
+          );
+        });
       }
 
       animationId = requestAnimationFrame(drawVideoVisuals);
@@ -1109,9 +1124,507 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
   const hostPlatform = backendInfo?.platform ?? null;
   const hostGpus = backendInfo?.gpus ?? [];
 
-  // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
+
+// Compute display scores for labels (keep original order for heatmap alignment)
+  const promptsWithScores = useMemo(() => {
+    const displayScores = Object.keys(classificationScores).length > 0
+      ? (normalizeScores
+          ? normalizeScoresMinMax(classificationScores)
+          : clampScoresToPositive(classificationScores))
+      : {};
+
+    // Keep original prompt order for heatmap alignment
+    return prompts.map(prompt => ({
+      prompt,
+      rawScore: classificationScores[prompt] ?? 0,
+      displayScore: displayScores[prompt] ?? 0,
+      isTop: classificationScores[prompt] === Math.max(...Object.values(classificationScores)),
+    }));
+  }, [prompts, classificationScores, normalizeScores]);
+
+  // Dynamic heatmap height
+  const heatmapHeight = Math.max(300, prompts.length * 20);
+
+  // Immersive Flow Layout
+  if (layoutMode === "immersive") {
+    return (
+      <div className="immersive-page">
+        {/* Top Header */}
+        <header className="immersive-header">
+          <div className="logo">
+            <span className="logo-icon">🎧</span>
+            <span>SonoTag</span>
+          </div>
+
+          <div className="controls-row">
+            {/* Mode Tabs */}
+            <div className="mode-tabs">
+              <button
+                type="button"
+                className={`mode-tab ${inputMode === "youtube" ? "active" : ""}`}
+                onClick={() => {
+                  setInputMode("youtube");
+                  if (status === "running") stopMonitoring();
+                }}
+              >
+                YouTube
+              </button>
+              <button
+                type="button"
+                className={`mode-tab ${inputMode === "microphone" ? "active" : ""}`}
+                onClick={() => {
+                  setInputMode("microphone");
+                  setYoutubeAnalyzing(false);
+                  videoAudioBufferRef.current = [];
+                }}
+              >
+                Microphone
+              </button>
+            </div>
+
+            {/* Settings Button */}
+            <button
+              type="button"
+              className="settings-btn"
+              onClick={() => setSettingsOpen(true)}
+              title="Settings"
+            >
+              ⚙️
+            </button>
+
+            {/* Status */}
+            <div className="status-indicator">
+              <span className={`status-dot ${(youtubeAnalyzing || status === "running") ? "active" : ""}`} />
+              <span>{youtubeAnalyzing ? "Analyzing" : status === "running" ? "Recording" : "Idle"}</span>
+            </div>
+          </div>
+        </header>
+
+        {/* Main Visualization Area */}
+        <main className="immersive-main">
+          <div className="viz-container">
+            {/* Spectrogram */}
+              <div className="spectrogram-section">
+                <span className="spectrogram-label">Spectrogram</span>
+                <div className="spectrogram-canvas-wrap">
+                  <canvas
+                    ref={spectrogramRef}
+                    width={1200}
+                    height={200}
+                  />
+                </div>
+                <div className="spectrogram-label-spacer" />
+              </div>
+
+              {/* Heatmap with Dynamic Labels */}
+              <div className="heatmap-section" style={{ height: heatmapHeight }}>
+                <span className="heatmap-label">FLAM Detection</span>
+                <div className="heatmap-canvas-wrap">
+                  <canvas
+                    ref={heatmapRef}
+                    width={1200}
+                    height={heatmapHeight}
+                  />
+                </div>
+
+                {/* Dynamic Labels - original order to match heatmap rows */}
+                <div className="dynamic-labels">
+                  {promptsWithScores.map(({ prompt, rawScore, displayScore }) => (
+                    <div
+                      key={prompt}
+                      className="dynamic-label"
+                      style={getDynamicLabelStyle(displayScore)}
+                    >
+                      <span className="label-text">{prompt}</span>
+                      <span className="label-score">
+                        {rawScore !== 0 ? rawScore.toFixed(2) : "—"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+          </div>
+        </main>
+
+        {/* Bottom Controls Bar */}
+        <footer className="immersive-footer">
+          {/* Video Player / Mic Status */}
+          <div className="footer-section">
+            {inputMode === "youtube" && youtubeVideo ? (
+              <div className="video-player-mini">
+                <video
+                  ref={videoRef}
+                  src={getVideoStreamUrl(youtubeVideo.video_id)}
+                  controls
+                  crossOrigin="anonymous"
+                  onPlay={() => {
+                    if (!videoRef.current) return;
+                    if (!videoAudioContextRef.current) {
+                      const audioContext = new AudioContext();
+                      const source = audioContext.createMediaElementSource(videoRef.current);
+                      const scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+                      const analyser = audioContext.createAnalyser();
+                      analyser.fftSize = 2048;
+                      analyser.smoothingTimeConstant = 0.8;
+                      source.connect(analyser);
+                      source.connect(scriptProcessor);
+                      scriptProcessor.connect(audioContext.destination);
+                      source.connect(audioContext.destination);
+                      let currentBufferSamples = 0;
+                      scriptProcessor.onaudioprocess = (event) => {
+                        if (!youtubeAnalyzingRef.current) return;
+                        const inputData = event.inputBuffer.getChannelData(0);
+                        const samples = new Float32Array(inputData);
+                        videoAudioBufferRef.current.push(samples);
+                        currentBufferSamples += samples.length;
+                        const currentMaxSamples = audioContext.sampleRate * bufferSecondsRef.current;
+                        if (currentBufferSamples >= currentMaxSamples) {
+                          currentBufferSamples = 0;
+                          classifyVideoBuffer(audioContext.sampleRate);
+                        }
+                      };
+                      videoAudioContextRef.current = audioContext;
+                      videoSourceRef.current = source;
+                      videoScriptProcessorRef.current = scriptProcessor;
+                      videoAnalyserRef.current = analyser;
+                    }
+                    setYoutubeAnalyzing(true);
+                  }}
+                  onPause={() => {
+                    setYoutubeAnalyzing(false);
+                    videoAudioBufferRef.current = [];
+                  }}
+                  onEnded={() => {
+                    setYoutubeAnalyzing(false);
+                    videoAudioBufferRef.current = [];
+                  }}
+                />
+                <div className="video-info">
+                  <span className="video-title">{youtubeVideo.title}</span>
+                  {youtubeAnalyzing && <span className="video-status">● Analyzing...</span>}
+                </div>
+              </div>
+            ) : inputMode === "youtube" ? (
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <input
+                  type="text"
+                  placeholder="Paste YouTube URL..."
+                  value={youtubeUrl}
+                  onChange={(e) => setYoutubeUrl(e.target.value)}
+                  style={{
+                    width: "280px",
+                    padding: "8px 12px",
+                    borderRadius: "6px",
+                    border: "1px solid var(--border)",
+                    background: "rgba(15, 21, 32, 0.8)",
+                    color: "var(--text)",
+                    fontSize: "13px"
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!youtubeUrl.trim()) return;
+                    if (videoScriptProcessorRef.current) {
+                      videoScriptProcessorRef.current.disconnect();
+                      videoScriptProcessorRef.current = null;
+                    }
+                    if (videoSourceRef.current) {
+                      videoSourceRef.current.disconnect();
+                      videoSourceRef.current = null;
+                    }
+                    if (videoAnalyserRef.current) {
+                      videoAnalyserRef.current.disconnect();
+                      videoAnalyserRef.current = null;
+                    }
+                    if (videoAudioContextRef.current) {
+                      videoAudioContextRef.current.close();
+                      videoAudioContextRef.current = null;
+                    }
+                    videoAudioBufferRef.current = [];
+                    setYoutubeAnalyzing(false);
+                    setYoutubePreparing(true);
+                    setYoutubeError("");
+                    try {
+                      const result = await prepareYouTubeVideo(youtubeUrl);
+                      setYoutubeVideo(result);
+                    } catch (err) {
+                      setYoutubeError(err instanceof Error ? err.message : "Failed");
+                    } finally {
+                      setYoutubePreparing(false);
+                    }
+                  }}
+                  disabled={youtubePreparing || !modelStatus?.loaded}
+                  style={{ padding: "8px 16px", fontSize: "13px" }}
+                >
+                  {youtubePreparing ? "Loading..." : "Load"}
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <span style={{ fontSize: "12px", color: "var(--muted)" }}>🎙️ Microphone</span>
+                {status === "running" ? (
+                  <button type="button" className="ghost" onClick={stopMonitoring} style={{ padding: "6px 12px", fontSize: "12px" }}>
+                    Stop
+                  </button>
+                ) : (
+                  <button type="button" onClick={startMonitoring} style={{ padding: "6px 12px", fontSize: "12px" }}>
+                    Start
+                  </button>
+                )}
+                <div style={{ width: "60px", height: "6px", background: "rgba(10,16,24,0.8)", borderRadius: "3px", overflow: "hidden" }}>
+                  <div style={{ width: `${levelPercent}%`, height: "100%", background: "linear-gradient(90deg, #ff7a3d, #2ad1ff)" }} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="footer-divider" />
+
+          {/* Preset Buttons */}
+          <div className="footer-section">
+            <button
+              type="button"
+              className={`preset-btn ${prompts === ACTION_MOVIE_PROMPTS ? "active" : ""}`}
+              onClick={() => {
+                setPrompts(ACTION_MOVIE_PROMPTS);
+                setPromptInput(ACTION_MOVIE_PROMPTS.join("; "));
+                setClassificationScores({});
+                setMusicDecomposition(false);
+              }}
+            >
+              🎬 Action
+            </button>
+            <button
+              type="button"
+              className={`preset-btn ${prompts === SPORTS_PROMPTS ? "active" : ""}`}
+              onClick={() => {
+                setPrompts(SPORTS_PROMPTS);
+                setPromptInput(SPORTS_PROMPTS.join("; "));
+                setClassificationScores({});
+                setMusicDecomposition(false);
+              }}
+            >
+              🏈 Sports
+            </button>
+            <button
+              type="button"
+              className={`preset-btn ${musicDecomposition ? "active" : ""}`}
+              onClick={() => {
+                setPrompts(MUSIC_DECOMPOSITION_PROMPTS);
+                setPromptInput(MUSIC_DECOMPOSITION_PROMPTS.join("; "));
+                setClassificationScores({});
+                setMusicDecomposition(true);
+              }}
+            >
+              🎵 Music
+            </button>
+          </div>
+
+          <div className="footer-divider" />
+
+          {/* Buffer Control */}
+          <div className="footer-section">
+            <div className="compact-control">
+              <label>Buffer</label>
+              <input
+                type="range"
+                min={MIN_BUFFER_SECONDS}
+                max={MAX_BUFFER_SECONDS}
+                value={bufferSeconds}
+                onChange={(e) => setBufferSeconds(Number(e.target.value))}
+              />
+              <span className="value">{bufferSeconds}s</span>
+            </div>
+          </div>
+
+          <div className="footer-section grow" />
+
+          {/* Model Status */}
+          <div className="footer-section">
+            <div className={`model-badge ${modelStatus?.loaded ? "ready" : ""}`}>
+              <span className="badge-dot" />
+              <span>{modelStatus?.loaded ? `FLAM (${modelStatus.device})` : "Loading..."}</span>
+            </div>
+            {inferenceCount > 0 && (
+              <span style={{ fontSize: "11px", color: "var(--muted)" }}>
+                #{inferenceCount} | {lastInferenceTime ? `${(lastInferenceTime / 1000).toFixed(1)}s` : "—"}
+              </span>
+            )}
+          </div>
+
+          {/* Layout Toggle */}
+          <div className="footer-section">
+            <button
+              type="button"
+              className="preset-btn"
+              onClick={() => setLayoutMode("classic")}
+              title="Switch to Classic layout"
+            >
+              Classic View
+            </button>
+          </div>
+        </footer>
+
+        {/* Settings Slide-Out Panel */}
+        <div className={`settings-overlay ${settingsOpen ? "open" : ""}`} onClick={() => setSettingsOpen(false)}>
+          <div className="settings-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="settings-header">
+              <h2>Settings</h2>
+              <button type="button" className="settings-close" onClick={() => setSettingsOpen(false)}>×</button>
+            </div>
+            <div className="settings-content">
+              {/* Sound Categories */}
+              <div className="settings-section">
+                <h3>Sound Categories</h3>
+                <textarea
+                  value={promptInput}
+                  onChange={(e) => setPromptInput(e.target.value)}
+                  placeholder="speech; music; gunshot; ..."
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const parsed = promptInput.split(";").map((p) => p.trim()).filter((p) => p.length > 0);
+                    const seen = new Set<string>();
+                    const uniquePrompts: string[] = [];
+                    for (const prompt of parsed) {
+                      const lowerPrompt = prompt.toLowerCase();
+                      if (!seen.has(lowerPrompt)) {
+                        seen.add(lowerPrompt);
+                        uniquePrompts.push(prompt);
+                      }
+                    }
+                    if (uniquePrompts.length > 0) {
+                      setPrompts(uniquePrompts);
+                      setPromptInput(uniquePrompts.join("; "));
+                      setClassificationScores({});
+                    }
+                  }}
+                >
+                  Update Prompts
+                </button>
+                <p style={{ fontSize: "11px", color: "var(--muted)", margin: 0 }}>
+                  {prompts.length} active • Use semicolons to separate
+                </p>
+              </div>
+
+              {/* Detection Mode */}
+              <div className="settings-section">
+                <h3>Detection Mode</h3>
+                <div className="settings-row">
+                  <label>Relative mode (min-max)</label>
+                  <input
+                    type="checkbox"
+                    checked={normalizeScores}
+                    onChange={(e) => setNormalizeScores(e.target.checked)}
+                  />
+                </div>
+                <div className="settings-row">
+                  <label>Sort by score</label>
+                  <input
+                    type="checkbox"
+                    checked={sortByScore}
+                    onChange={(e) => setSortByScore(e.target.checked)}
+                  />
+                </div>
+              </div>
+
+              {/* Inference Settings */}
+              <div className="settings-section">
+                <h3>Inference</h3>
+                <div className="settings-row">
+                  <label>Buffer duration</label>
+                  <input
+                    type="range"
+                    min={MIN_BUFFER_SECONDS}
+                    max={MAX_BUFFER_SECONDS}
+                    value={bufferSeconds}
+                    onChange={(e) => setBufferSeconds(Number(e.target.value))}
+                  />
+                  <span className="value">{bufferSeconds}s</span>
+                </div>
+                <div className="settings-row">
+                  <label>Slide speed</label>
+                  <input
+                    type="range"
+                    min={MIN_SLIDE_SPEED}
+                    max={MAX_SLIDE_SPEED}
+                    value={slideSpeed}
+                    onChange={(e) => setSlideSpeed(Number(e.target.value))}
+                  />
+                  <span className="value">{slideSpeed}</span>
+                </div>
+              </div>
+
+              {/* Frequency Range */}
+              <div className="settings-section">
+                <h3>Frequency Range</h3>
+                <div className="settings-row">
+                  <label>Min Hz</label>
+                  <input
+                    type="number"
+                    value={freqMin}
+                    onChange={handleFreqMinChange}
+                    style={{ width: "80px", padding: "6px 8px", fontSize: "12px" }}
+                  />
+                </div>
+                <div className="settings-row">
+                  <label>Max Hz</label>
+                  <input
+                    type="number"
+                    value={freqMax}
+                    onChange={handleFreqMaxChange}
+                    style={{ width: "80px", padding: "6px 8px", fontSize: "12px" }}
+                  />
+                </div>
+                <button type="button" className="ghost" onClick={setFullRange} style={{ fontSize: "12px" }}>
+                  Full Range ({formatHz(nyquist, true)})
+                </button>
+              </div>
+
+              {/* Timing */}
+              {timingBreakdown && (
+                <div className="settings-section">
+                  <h3>Last Inference Timing</h3>
+                  <div className="timing-grid">
+                    <span className="timing-label">Read</span>
+                    <span className="timing-value">{timingBreakdown.read_ms.toFixed(1)}ms</span>
+                    <span className="timing-label">Decode</span>
+                    <span className="timing-value">{timingBreakdown.decode_ms.toFixed(1)}ms</span>
+                    <span className="timing-label">FLAM</span>
+                    <span className="timing-value highlight">{timingBreakdown.audio_embed_ms.toFixed(1)}ms</span>
+                    <span className="timing-label">Total</span>
+                    <span className="timing-value">{timingBreakdown.total_ms.toFixed(1)}ms</span>
+                  </div>
+                </div>
+              )}
+
+              {/* System Info */}
+              <div className="settings-section">
+                <h3>System</h3>
+                <div className="system-info-grid">
+                  <span>CPU</span>
+                  <span>{hostCpuModel || `${hostCpuLogical} threads`}</span>
+                  <span>Memory</span>
+                  <span>{formatBytes(hostMemoryBytes)}</span>
+                  <span>Platform</span>
+                  <span>{hostPlatform || browserInfo.platform}</span>
+                  <span>Sample Rate</span>
+                  <span>{sampleRate ? `${sampleRate} Hz` : "—"}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+// Classic Layout (original)
   return (
     <div className="page">
       <header className="header">
@@ -1126,6 +1639,14 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
         <div className="status">
           <span className={`pill ${status}`}>{status}</span>
           <span className="meta">API: {API_BASE_URL}</span>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => setLayoutMode("immersive")}
+            style={{ marginTop: "8px", fontSize: "11px", padding: "6px 10px" }}
+          >
+            ✨ Immersive View
+          </button>
         </div>
       </header>
 
