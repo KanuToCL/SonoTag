@@ -32,6 +32,64 @@ This would make the heatmap "fill in" with detailed temporal resolution, showing
 - Overlapping windows: Slide the buffer by small increments (e.g., 0.5s hop, 4s window) for smoother updates
 - Interpolated display: Smooth transitions between chunk updates
 
+### Product Vision: Transfer Learning for Custom Sounds
+
+A key extensibility goal is enabling **fine-tuning FLAM for domain-specific sounds** that may not be well-captured by zero-shot prompts alone.
+
+#### Architecture Advantages
+FLAM's modular architecture makes transfer learning practical:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                        FLAM                             │
+├─────────────────────────────────────────────────────────┤
+│  Audio Branch (HTSAT)          Text Branch (RoBERTa)    │
+│  └── Pretrained encoder        └── Pretrained encoder   │
+├─────────────────────────────────────────────────────────┤
+│  Audio Projection (MLP)        Text Projection (MLP)    │
+│  └── Trainable                 └── Trainable            │
+├─────────────────────────────────────────────────────────┤
+│  Per-Text Logit Bias    ←── Learns prior probability    │
+│  Per-Text Logit Scale   ←── Learns per-class sensitivity│
+└─────────────────────────────────────────────────────────┘
+```
+
+#### Three Levels of Customization
+
+| Level | Approach | Effort | Data Needed | Use Case |
+|-------|----------|--------|-------------|----------|
+| **0** | Zero-shot prompts | None | None | Describable sounds |
+| **1** | Prompt engineering | Minutes | None | Compound descriptions |
+| **2** | Fine-tune projections + bias | 1-2 hours | 100-500 clips/class | Domain-specific sounds |
+| **3** | Full fine-tuning | 1-2 days | 1000+ clips + timestamps | High-precision detection |
+
+#### Why Level 2 is the Sweet Spot
+- `fc_per_text_logit_bias` learns the **prior probability** of each sound (rare vs common)
+- `fc_per_text_logit_scale` learns **sensitivity** per sound class (how confidently to trigger)
+- These are small networks (~1.5M params) that train quickly
+- Freeze the large pretrained encoders (HTSAT audio + RoBERTa text) to preserve general knowledge
+
+#### Data Format for Fine-tuning
+The OpenFLAM codebase already includes loss functions and expects:
+```python
+batch = {
+    "wav": audio_tensor,           # [B, 480000] @ 48kHz
+    "caption": ["sound description"],
+    "framewise_label": labels,     # [B_audio, B_text, T] binary (optional for Level 2)
+    "audio_mask": mask,            # [B_audio]
+    "text_mask": mask,             # [B_text]
+}
+```
+
+#### Practical Applications
+- **Industrial**: Machine fault detection, equipment monitoring
+- **Security**: Custom alarm recognition, specific threat sounds
+- **Accessibility**: Personalized sound alerts for hearing-impaired users
+- **Content**: Brand-specific audio watermarks, show-specific sound effects
+
+#### License Note
+OpenFLAM uses Adobe Research License (non-commercial). Fine-tuning for commercial use would require licensing discussions with Adobe.
+
 ## Goals
 - User opens app and sees audio permissions + device dropdown.
 - Default microphone is selected automatically; user can change it.
@@ -163,6 +221,14 @@ This would make the heatmap "fill in" with detailed temporal resolution, showing
 - [ ] ONNX export for cross-platform inference
 - [ ] Multi-user support with session management
 - [ ] Deploy to production (Vercel + GPU inference service)
+
+#### Future (v2.0.0 - Transfer Learning)
+- [ ] **Fine-tuning pipeline**: Script to train projection layers + per-text bias/scale on custom datasets
+- [ ] Dataset format documentation and example data loaders
+- [ ] Training UI: Upload labeled audio clips, define custom sound classes
+- [ ] Model versioning: Save/load fine-tuned checkpoints
+- [ ] A/B comparison: Test fine-tuned vs base model side-by-side
+- [ ] Export fine-tuned weights for deployment
 
 ---
 
