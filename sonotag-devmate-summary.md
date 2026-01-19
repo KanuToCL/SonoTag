@@ -1,7 +1,8 @@
 # SonoTag / FLAM Browser - Developer Onboarding Guide
 
-> **Last Updated**: January 2026
+> **Last Updated**: January 19, 2026
 > **Project Status**: Active Development (Pre-inference integration)
+> **Frontend**: TypeScript (migrated from JavaScript)
 
 ---
 
@@ -38,7 +39,7 @@ Users need a way to:
 |-------|------------|---------|
 | **Frontend** | React + Vite | React 18.3, Vite 5.4 |
 | **Backend** | FastAPI + uvicorn | FastAPI 0.115+ |
-| **Language** | JavaScript (JSX) + Python | ES6+, Python 3.10-3.12 |
+| **Language** | TypeScript + Python | TS 5.x, Python 3.10-3.12 |
 | **Styling** | CSS (custom) | CSS3 with CSS Variables |
 | **ML Framework** | PyTorch + OpenFLAM | (via openflam/) |
 | **Audio** | Web Audio API | Browser native |
@@ -75,7 +76,7 @@ graph TB
     FLAM --> OpenFLAM
     OpenFLAM --> PyTorch
 
-    click UI "frontend/src/App.jsx" "Open React App"
+    click UI "frontend/src/App.tsx" "Open React App"
     click API "backend/app/main.py" "Open FastAPI Server"
     click FLAM "backend/scripts/flam_probe.py" "Open FLAM Probe Script"
 ```
@@ -102,17 +103,17 @@ graph TB
 
 #### Component: React Application
 
-**File**: [App.jsx](frontend/src/App.jsx)
+**File**: [App.tsx](frontend/src/App.tsx)
 
 **Purpose**: Main application component managing all UI state, audio capture, and visualization rendering.
 
 **Key Elements**:
-- [`App()`](frontend/src/App.jsx#L97) - Main functional component with all state hooks
-- [`startMonitoring()`](frontend/src/App.jsx#L318) - Initiates audio capture and FFT analysis
-- [`stopMonitoring()`](frontend/src/App.jsx#L268) - Cleanly stops audio stream and releases resources
-- [`draw()`](frontend/src/App.jsx#L382) - Animation frame loop for spectrogram/heatmap rendering
-- [`heatColor()`](frontend/src/App.jsx#L63) - Converts intensity values to heat map colors
-- [`CATEGORY_BANDS`](frontend/src/App.jsx#L44) - Placeholder frequency bands for FLAM output preview
+- [`App()`](frontend/src/App.tsx#L175) - Main functional component with all state hooks
+- [`startMonitoring()`](frontend/src/App.tsx#L314) - Initiates audio capture and FFT analysis
+- [`stopMonitoring()`](frontend/src/App.tsx#L269) - Cleanly stops audio stream and releases resources
+- [`draw()`](frontend/src/App.tsx#L378) - Animation frame loop for spectrogram/heatmap rendering
+- [`heatColor()`](frontend/src/App.tsx#L133) - Converts intensity values to heat map colors
+- [`CATEGORY_BANDS`](frontend/src/App.tsx#L72) - Placeholder frequency bands for FLAM output preview
 
 **State Management**:
 ```javascript
@@ -137,14 +138,14 @@ const streamRef = useRef(null);         // MediaStream from getUserMedia
 ```
 
 **Depends On**:
-- Internal: [styles.css](frontend/src/styles.css)
-- External: React 18, Web Audio API, Canvas API
+- Internal: [styles.css](frontend/src/styles.css), [vite-env.d.ts](frontend/src/vite-env.d.ts)
+- External: React 18, Web Audio API, Canvas API, TypeScript
 
 ---
 
 #### Component: Entry Point
 
-**File**: [main.jsx](frontend/src/main.jsx)
+**File**: [main.tsx](frontend/src/main.tsx)
 
 **Purpose**: React application bootstrap and DOM mounting.
 
@@ -154,7 +155,7 @@ const streamRef = useRef(null);         // MediaStream from getUserMedia
 - Imports global styles
 
 **Depends On**:
-- Internal: [App.jsx](frontend/src/App.jsx), [styles.css](frontend/src/styles.css)
+- Internal: [App.tsx](frontend/src/App.tsx), [styles.css](frontend/src/styles.css)
 - External: react-dom/client
 
 ---
@@ -349,7 +350,7 @@ sequenceDiagram
     React->>React: Update state, render UI
 ```
 
-**Key Files**: [App.jsx](frontend/src/App.jsx), [main.py](backend/app/main.py)
+**Key Files**: [App.tsx](frontend/src/App.tsx), [main.py](backend/app/main.py)
 
 ---
 
@@ -383,7 +384,7 @@ sequenceDiagram
     end
 ```
 
-**Key Files**: [App.jsx#L318](frontend/src/App.jsx#L318) (startMonitoring), [App.jsx#L382](frontend/src/App.jsx#L382) (draw loop)
+**Key Files**: [App.tsx#L314](frontend/src/App.tsx#L314) (startMonitoring), [App.tsx#L378](frontend/src/App.tsx#L378) (draw loop)
 
 ---
 
@@ -416,7 +417,7 @@ sequenceDiagram
     Draw->>RAF: Schedule next frame
 ```
 
-**Key Files**: [App.jsx#L382-L433](frontend/src/App.jsx#L382)
+**Key Files**: [App.tsx#L378-L429](frontend/src/App.tsx#L378)
 
 ---
 
@@ -563,7 +564,7 @@ class RecommendResponse(BaseModel):
 
 #### Model: Browser Info
 
-**File**: [App.jsx#L123](frontend/src/App.jsx#L123)
+**File**: [App.tsx#L223](frontend/src/App.tsx#L223)
 
 **Purpose**: Browser-reported hardware capabilities.
 
@@ -583,7 +584,7 @@ const browserInfo = useMemo(() => ({
 
 #### Model: Recommendation State
 
-**File**: [App.jsx#L106](frontend/src/App.jsx#L106)
+**File**: [App.tsx#L200](frontend/src/App.tsx#L200)
 
 **Purpose**: Buffer recommendation with source tracking.
 
@@ -599,7 +600,7 @@ const [recommendation, setRecommendation] = useState({
 
 #### Model: Category Bands (Placeholder)
 
-**File**: [App.jsx#L44](frontend/src/App.jsx#L44)
+**File**: [App.tsx#L72](frontend/src/App.tsx#L72)
 
 **Purpose**: Frequency band definitions for heatmap preview (placeholder until FLAM).
 
@@ -715,7 +716,7 @@ python backend/scripts/flam_probe.py --audio test.wav
 | **Performance** | Good | Same | Solid.js, Qwik |
 | **Inference** | N/A | Same | Rust+WASM for ONNX |
 
-**Recommendation**: Migrate to TypeScript for type safety without runtime cost.
+**Status**: ✅ Migrated to TypeScript (January 2026)
 
 ### Backend Language Options
 
@@ -734,6 +735,7 @@ python backend/scripts/flam_probe.py --audio test.wav
 SonoTag/
 ├── README.md                      # Quick start and overview
 ├── CHANGELOG.md                   # Version history
+├── sonotag-devmate-summary.md     # This onboarding document
 ├── install.bat / install.command  # Setup scripts
 ├── run.bat / run.command          # Start scripts
 ├── uninstall.bat / uninstall.command
@@ -741,16 +743,20 @@ SonoTag/
 ├── docs/
 │   ├── dev.md                     # Development guide
 │   ├── roadmap.md                 # Product vision and milestones
-│   └── flam_integration.md        # FLAM setup instructions
+│   ├── flam_integration.md        # FLAM setup instructions
+│   └── next-steps.md              # Current priorities and backlog
 │
 ├── frontend/
 │   ├── package.json               # NPM config
-│   ├── vite.config.js             # Vite bundler config
+│   ├── tsconfig.json              # TypeScript configuration
+│   ├── tsconfig.node.json         # TypeScript config for Vite
+│   ├── vite.config.ts             # Vite bundler config
 │   ├── index.html                 # HTML template
 │   └── src/
-│       ├── main.jsx               # React entry point
-│       ├── App.jsx                # Main application component
-│       └── styles.css             # Global styles
+│       ├── main.tsx               # React entry point
+│       ├── App.tsx                # Main application component
+│       ├── styles.css             # Global styles
+│       └── vite-env.d.ts          # Vite environment types
 │
 ├── backend/
 │   ├── requirements.txt           # Python dependencies
@@ -759,7 +765,20 @@ SonoTag/
 │   └── scripts/
 │       └── flam_probe.py          # FLAM test script
 │
-└── openflam/                      # (cloned) OpenFLAM library
+├── openflam/                      # (cloned, gitignored) OpenFLAM library
+│   ├── src/openflam/
+│   │   ├── __init__.py            # Module exports
+│   │   ├── hook.py                # OpenFLAM API wrapper
+│   │   └── module/
+│   │       ├── model.py           # CLAP/FLAM model classes
+│   │       ├── htsat.py           # Audio encoder
+│   │       └── contrastive_loss.py
+│   └── test/
+│       ├── global_example.py      # Global similarity example
+│       ├── local_example.py       # Sound event detection example
+│       └── test_data/
+│
+└── openflam_ckpt/                 # (gitignored) Model weights (~750MB)
 ```
 
 ---
