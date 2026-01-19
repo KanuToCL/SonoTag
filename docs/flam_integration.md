@@ -251,6 +251,28 @@ Returns per-frame detection scores for each prompt, properly calibrated using th
 - Visualization matching FLAM paper (heatmaps over time)
 - Precise detection boundaries
 
+### How FLAM Scores Work (Paper Section C.2)
+
+The derivation in C.2 shows what FLAM's scores actually mean:
+
+```
+p(z=1|x,l,y) = σ( log(p(y|x,l) / p(y)) + β*(y) )
+                      ↑                    ↑
+               Relevance term         Learned bias
+```
+
+| Term | Meaning |
+|------|---------|
+| `log(p(y|x,l) / p(y))` | How much more likely this frame matches prompt `y` vs. random chance |
+| `β*(y)` | Per-prompt bias learned during training (corrects for label imbalance) |
+| `σ(...)` | Sigmoid - converts to probability [0, 1] |
+
+**In plain English**: FLAM scores tell you "How much more likely is this audio frame to contain sound `y` compared to a random audio frame?"
+
+- **Positive scores**: Audio is MORE likely than average to contain this sound
+- **Negative scores**: Audio is LESS likely than average to contain this sound  
+- **Near zero**: No strong evidence either way
+
 ### Robust Classifier Theory (Paper Section C.3)
 
 The `method` parameter controls how FLAM calibrates predictions to handle **label imbalance** in training data.
