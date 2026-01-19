@@ -738,7 +738,7 @@ if (!youtubeAnalyzing || !heatmapRef.current || !spectrogramRef.current) return;
         cancelAnimationFrame(animationId);
       }
     };
-  }, [youtubeAnalyzing, slideSpeed, freqRange.min, freqRange.max, nyquist]);
+  }, [youtubeAnalyzing, slideSpeed, freqRange.min, freqRange.max, nyquist, layoutMode]);
 
   // ---------------------------------------------------------------------------
   // Event Handlers

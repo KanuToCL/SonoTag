@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.4] - 2026-01-19
+
+### Fixed - Layout Mode Switching Bug
+- **Live spectrogram/heatmap stops when switching from Classic to Immersive**: The visualization draw loop now properly restarts when switching layout modes
+  - Root cause: The `useEffect` hook for the video heatmap draw loop didn't include `layoutMode` in its dependency array
+  - When switching layouts, the canvas refs point to different DOM elements, but the old effect was still drawing to unmounted canvases
+  - Fix: Added `layoutMode` to the dependency array, ensuring the effect cleans up and restarts with the new canvas refs
+
+### Technical Notes
+- The video heatmap draw loop effect (lines 642-741) now depends on: `youtubeAnalyzing`, `slideSpeed`, `freqRange.min`, `freqRange.max`, `nyquist`, and `layoutMode`
+- When `layoutMode` changes: old animation frame is cancelled → new effect starts → draws to correct canvas elements
+
 ## [0.4.3] - 2026-01-19
 
 ### Added - Color Themes
