@@ -207,6 +207,7 @@ Add sliding window with overlap for smoother detection:
 - [ ] Add WebSocket endpoint for streaming audio/results
 
 ### Medium Priority
+- [ ] **Webcam Floating Modal (Mic Tab)** - Add webcam activation in mic input mode with floating draggable modal (same UX as YouTube video modal). Enable real-time video + audio capture for multimodal scenarios
 - [ ] Add local storage for user prompt presets
 - [ ] Add export of classification results (CSV/JSON)
 - [ ] Desktop wrapper (Tauri/Electron) for local GPU access
@@ -217,6 +218,47 @@ Add sliding window with overlap for smoother detection:
 - [ ] Add keyboard shortcuts
 - [ ] Add i18n support
 - [ ] Add PWA support for offline use
+
+---
+
+## 🎥 Vision: Webcam Floating Modal
+
+### Concept
+Add webcam activation in the microphone input mode, following the same UX pattern as the YouTube video modal:
+
+**Features**:
+- Floating, draggable, resizable modal showing live webcam feed
+- Positioned alongside or overlapping the audio visualizations
+- Toggle on/off via camera icon in the mic section header
+- Continue microphone audio analysis while webcam is active
+- Video-only (no webcam audio to avoid feedback) or optional webcam audio mixing
+
+**Use Cases**:
+1. **Multimodal analysis**: Combine live audio detection with visual context
+2. **Recording scenarios**: Monitor what's being captured visually
+3. **Streaming preview**: See yourself while analyzing audio environment
+4. **Future vision models**: Prepare for audio-visual foundation models
+
+**Implementation Approach**:
+```
+[Mic Section Header]
+  🎤 Microphone  |  [Start] [Stop]  |  📷 Webcam Toggle
+
+[Floating Webcam Modal] (when active)
+  ┌──────────────────────────────────┐
+  │ [drag handle]  📷 Webcam   ✕    │
+  ├──────────────────────────────────┤
+  │                                  │
+  │       Live webcam feed           │
+  │                                  │
+  └──────────────────────────────────┘
+```
+
+**Technical Notes**:
+- Use `navigator.mediaDevices.getUserMedia({ video: true })` for webcam
+- Separate stream from audio capture to avoid conflicts
+- Reuse modal drag/resize logic from video modal
+- Consider device selection dropdown for multiple cameras
 
 ---
 

@@ -46,6 +46,7 @@ Users need a way to:
 | `/classify` Endpoint | ✅ Done | Audio classification with custom prompts |
 | Custom Prompt Input | ✅ Done | User-defined text prompts in UI |
 | Live Audio → FLAM | 🔄 In Progress | Wire frontend to send audio chunks |
+| Webcam Floating Modal | 📋 Planned | Camera feed in draggable modal (mic mode) |
 | WebSocket Streaming | 📋 Planned | Low-latency audio chunk streaming |
 
 ### Technology Stack
