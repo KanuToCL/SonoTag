@@ -45,9 +45,16 @@ Users need a way to:
 | FLAM Model Loading | ✅ Done | Model loads at backend startup |
 | `/classify` Endpoint | ✅ Done | Audio classification with custom prompts |
 | Custom Prompt Input | ✅ Done | User-defined text prompts in UI |
-| Live Audio → FLAM | 🔄 In Progress | Wire frontend to send audio chunks |
+| Live Audio → FLAM | ✅ Done | Real-time audio chunks to FLAM inference |
+| YouTube Video Modal | ✅ Done | Floating draggable video with live analysis |
+| Video Modal Search | ✅ Done | Inline URL input with search icon |
+| Modal Transparency | ✅ Done | Glassmorphism effect on modals |
+| Soft Edge Fades | ✅ Done | Gradient borders on visualizations |
+| Labels Modal | ✅ Done | Floating labels panel with main window button |
 | Webcam Floating Modal | 📋 Planned | Camera feed in draggable modal (mic mode) |
 | WebSocket Streaming | 📋 Planned | Low-latency audio chunk streaming |
+| Backend Thread Pool | 📋 Planned | Concurrent inference requests |
+| Web Worker Audio | 📋 Planned | Offload audio processing from main thread |
 
 ### Technology Stack
 

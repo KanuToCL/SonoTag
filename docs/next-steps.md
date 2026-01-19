@@ -1,7 +1,7 @@
 # SonoTag - Next Steps
 
 > **Last Updated**: January 19, 2026
-> **Current Phase**: Live inference with frame-wise detection, optimizations planned
+> **Current Phase**: Live inference with frame-wise detection, immersive UI enhancements
 
 ---
 
@@ -55,6 +55,24 @@
 - [x] Frontend API function `classifyAudioLocal()` in api.ts
 - [x] Frontend types `ClassifyLocalResponse` in types.ts
 - [x] App.tsx updated to call `/classify-local` endpoint
+
+### YouTube Video Integration
+- [x] YouTube URL input and video preparation API
+- [x] Floating draggable/resizable video modal
+- [x] Live audio extraction from video element
+- [x] Real-time FLAM analysis of video audio
+- [x] Video modal search icon with inline URL input (keeps current video playing)
+- [x] Modal transparency (0.65 opacity) for immersive feel
+
+### Immersive UI/UX Enhancements
+- [x] Glassmorphism design with blur effects and transparency
+- [x] Soft fade effect on heatmap/spectrogram left edges (no hard container lines)
+- [x] Gradient horizontal borders (solid right → transparent left)
+- [x] Floating Labels modal (draggable, transparent)
+- [x] Labels button in video modal header
+- [x] Labels button in main window (heatmap section)
+- [x] Color theme selector (multiple palettes)
+- [x] Collapsible settings panel
 
 ### Verified End-to-End
 ```bash
