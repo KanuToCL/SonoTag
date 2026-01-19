@@ -19,7 +19,11 @@ import {
   audioSamplesToWavBlob,
   resampleAudio,
   getModelStatus,
+  prepareYouTubeVideo,
+  getVideoStreamUrl,
+  cleanupVideo,
 } from "./api";
+import type { PrepareVideoResponse } from "./types";
 
 // =============================================================================
 // Types & Interfaces (local to this component)
@@ -27,6 +31,7 @@ import {
 
 type PermissionState = "unknown" | "granted" | "denied";
 type MonitoringStatus = "idle" | "running" | "stopped";
+type InputMode = "microphone" | "youtube";
 
 // =============================================================================
 // Constants
@@ -72,6 +77,64 @@ const DEFAULT_PROMPTS = [
   "dog barking",
   "footsteps",
 ];
+
+// Music Decomposition prompts - comprehensive list of instruments and musical elements
+const MUSIC_DECOMPOSITION_PROMPTS = [
+  // Strings
+  "violin",
+  "viola",
+  "cello",
+  "double bass, contrabass",
+  "acoustic guitar",
+  "electric guitar",
+  "bass guitar",
+  "harp",
+  "banjo",
+  "mandolin",
+  "ukulele",
+  // Woodwinds
+  "flute",
+  "piccolo",
+  "clarinet",
+  "oboe",
+  "bassoon",
+  "saxophone, sax",
+  "recorder",
+  // Brass
+  "trumpet",
+  "trombone",
+  "french horn",
+  "tuba",
+  "cornet",
+  // Percussion
+  "drums, drum kit",
+  "snare drum",
+  "bass drum, kick drum",
+  "hi-hat, cymbals",
+  "timpani",
+  "xylophone",
+  "marimba",
+  "vibraphone",
+  "tambourine",
+  "triangle",
+  "bongos, congas",
+  // Keyboard
+  "piano, grand piano",
+  "electric piano, keyboard",
+  "organ, pipe organ",
+  "synthesizer, synth",
+  "harpsichord",
+  "accordion",
+  // Vocals
+  "male vocals, male singing",
+  "female vocals, female singing",
+  "choir, choral",
+  "opera singing",
+  "beatboxing",
+];
+
+// Maximum prompts to show before collapsing
+const MAX_VISIBLE_PROMPTS = 10;
 
 const HEAT_COLORS: HeatColorStop[] = [
   { stop: 0, color: [26, 20, 16] },
@@ -237,6 +300,24 @@ function App() {
   const [bufferSeconds, setBufferSeconds] = useState<number>(DEFAULT_BUFFER_SECONDS);
   const [normalizeScores, setNormalizeScores] = useState<boolean>(false); // Use clamping by default (matches paper)
   const [slideSpeed, setSlideSpeed] = useState<number>(DEFAULT_SLIDE_SPEED); // Pixels per frame for spectrogram/heatmap
+const [musicDecomposition, setMusicDecomposition] = useState<boolean>(false); // Toggle for instrument prompts
+  const [scoresExpanded, setScoresExpanded] = useState<boolean>(false); // Toggle for expanded scores list
+  const [sortByScore, setSortByScore] = useState<boolean>(false); // Toggle to sort scores high to low
+    const [inputMode, setInputMode] = useState<InputMode>("youtube"); // Tab: microphone or youtube
+
+// YouTube Analysis state
+  const [youtubeUrl, setYoutubeUrl] = useState<string>("");
+  const [youtubePreparing, setYoutubePreparing] = useState<boolean>(false);
+  const [youtubeVideo, setYoutubeVideo] = useState<PrepareVideoResponse | null>(null);
+  const [youtubeError, setYoutubeError] = useState<string>("");
+const [youtubeAnalyzing, setYoutubeAnalyzing] = useState<boolean>(false);
+  const [videoSampleRate, setVideoSampleRate] = useState<number>(48000);
+const videoRef = useRef<HTMLVideoElement>(null);
+  const videoAudioContextRef = useRef<AudioContext | null>(null);
+  const videoSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const videoScriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const videoAudioBufferRef = useRef<Float32Array[]>([]);
+  const videoAnalyserRef = useRef<AnalyserNode | null>(null);
 
   // ---------------------------------------------------------------------------
   // Refs
@@ -308,6 +389,109 @@ function App() {
     return labels;
   }, [freqRange.max, freqRange.min]);
 
+// ---------------------------------------------------------------------------
+  // Video Heatmap Draw Loop (for YouTube mode)
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+if (!youtubeAnalyzing || !heatmapRef.current || !spectrogramRef.current) return;
+
+    const heatmapCanvas = heatmapRef.current;
+    const heatmapContext = heatmapCanvas.getContext("2d");
+    const spectrogramCanvas = spectrogramRef.current;
+    const spectrogramContext = spectrogramCanvas.getContext("2d");
+    if (!heatmapContext || !spectrogramContext) return;
+
+    heatmapContext.imageSmoothingEnabled = false;
+    spectrogramContext.imageSmoothingEnabled = false;
+
+    let animationId: number;
+    let frameCount = 0;
+
+    const drawVideoVisuals = (): void => {
+      if (!heatmapRef.current || !heatmapContext || !spectrogramRef.current || !spectrogramContext) return;
+
+      // Frame skipping for slower scroll speeds
+      frameCount += 1;
+      const frameSkip = FRAME_SKIP_MAP[slideSpeed] || 1;
+      const shouldDraw = frameCount % frameSkip === 0;
+
+      if (shouldDraw) {
+        // Draw spectrogram from video analyser
+        const analyser = videoAnalyserRef.current;
+        if (analyser) {
+          const bufferLength = analyser.frequencyBinCount;
+          const freqData = new Uint8Array(bufferLength);
+          analyser.getByteFrequencyData(freqData);
+
+          // Shift spectrogram left by 1 pixel
+          spectrogramContext.drawImage(spectrogramCanvas, -1, 0);
+          const range = freqRange.max - freqRange.min || 1;
+          for (let y = 0; y < spectrogramCanvas.height; y += 1) {
+            const freq = freqRange.min + (y / spectrogramCanvas.height) * range;
+            const index = Math.floor((freq / nyquist) * bufferLength);
+            const safeIndex = clamp(index, 0, bufferLength - 1);
+            const intensity = freqData[safeIndex] / 255;
+            spectrogramContext.fillStyle = heatColor(intensity);
+            spectrogramContext.fillRect(
+              spectrogramCanvas.width - 1,
+              spectrogramCanvas.height - y - 1,
+              1,
+              1
+            );
+          }
+        }
+
+        // Draw heatmap
+        if (Object.keys(classificationScoresRef.current).length > 0) {
+          // Shift heatmap left by 1 pixel
+          heatmapContext.drawImage(heatmapCanvas, -1, 0);
+
+          const currentPrompts = promptsRef.current;
+          const currentScores = classificationScoresRef.current;
+          const useNormalization = normalizeScoresRef.current;
+          const rowHeight = heatmapCanvas.height / currentPrompts.length;
+
+          // Compute display values
+          let displayValues: Record<string, number> = {};
+          if (useNormalization) {
+            const values = Object.values(currentScores);
+            const min = Math.min(...values);
+            const max = Math.max(...values);
+            const range = max - min || 1;
+            for (const [key, val] of Object.entries(currentScores)) {
+              displayValues[key] = (val - min) / range;
+            }
+          } else {
+            for (const [key, val] of Object.entries(currentScores)) {
+              displayValues[key] = Math.max(0, Math.min(1, val));
+            }
+          }
+
+          currentPrompts.forEach((prompt, row) => {
+            const value = displayValues[prompt] ?? 0;
+            heatmapContext.fillStyle = heatColor(value);
+            heatmapContext.fillRect(
+              heatmapCanvas.width - 1,
+              row * rowHeight,
+              1,
+              rowHeight
+            );
+          });
+        }
+      }
+
+      animationId = requestAnimationFrame(drawVideoVisuals);
+    };
+
+    animationId = requestAnimationFrame(drawVideoVisuals);
+
+    return () => {
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+      }
+    };
+  }, [youtubeAnalyzing, slideSpeed, freqRange.min, freqRange.max, nyquist]);
+
   // ---------------------------------------------------------------------------
   // Event Handlers
   // ---------------------------------------------------------------------------
@@ -367,9 +551,67 @@ function App() {
     normalizeScoresRef.current = normalizeScores;
   }, [normalizeScores]);
 
-  // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
   // Classification Logic
   // ---------------------------------------------------------------------------
+  const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise<void> => {
+    if (isClassifying || videoAudioBufferRef.current.length === 0) {
+      return;
+    }
+
+    setIsClassifying(true);
+    const startTime = performance.now();
+
+    try {
+      // Concatenate all buffered samples
+      const totalLength = videoAudioBufferRef.current.reduce((sum, arr) => sum + arr.length, 0);
+      const allSamples = new Float32Array(totalLength);
+      let offset = 0;
+      for (const chunk of videoAudioBufferRef.current) {
+        allSamples.set(chunk, offset);
+        offset += chunk.length;
+      }
+
+      // Clear buffer for next window
+      videoAudioBufferRef.current = [];
+
+      // Resample to 48kHz if needed
+      const resampledSamples = sampleRateVideo !== TARGET_SAMPLE_RATE
+        ? resampleAudio(allSamples, sampleRateVideo, TARGET_SAMPLE_RATE)
+        : allSamples;
+
+      // Convert to WAV blob
+      const wavBlob = audioSamplesToWavBlob(resampledSamples, TARGET_SAMPLE_RATE);
+
+      // Send to backend using LOCAL endpoint for frame-wise scores
+      const currentPrompts = promptsRef.current;
+      const result = await classifyAudioLocal(wavBlob, currentPrompts, "unbiased");
+
+      // Update scores and timing
+      const elapsedMs = performance.now() - startTime;
+      setClassificationScores(result.global_scores);
+      setFrameScores(result.frame_scores);
+      setLastInferenceTime(elapsedMs);
+      setInferenceCount((prev) => prev + 1);
+      if (result.timing) {
+        setTimingBreakdown({
+          read_ms: result.timing.read_ms,
+          decode_ms: result.timing.decode_ms,
+          tensor_ms: result.timing.tensor_ms,
+          audio_embed_ms: result.timing.local_similarity_ms,
+          similarity_ms: 0,
+          total_ms: result.timing.total_ms,
+        });
+      }
+      setClassifyError("");
+    } catch (err) {
+      console.error("Video classification failed:", err);
+      setClassifyError(err instanceof Error ? err.message : "Classification failed");
+    } finally {
+      setIsClassifying(false);
+    }
+  }, [isClassifying]);
+
   const classifyCurrentBuffer = useCallback(async (): Promise<void> => {
     if (isClassifying || audioBufferRef.current.length === 0) {
       return;
@@ -816,9 +1058,324 @@ function App() {
       </header>
 
       <div className="layout">
-        <aside className="panel controls">
+<aside className="panel controls">
+          {/* Mode Tabs */}
+          <div style={{
+            display: "flex",
+            borderBottom: "1px solid #333",
+            marginBottom: "1rem"
+          }}>
+            <button
+              type="button"
+              onClick={() => {
+                setInputMode("youtube");
+                // Stop mic if running
+                if (status === "running") {
+                  stopMonitoring();
+                }
+              }}
+              style={{
+                flex: 1,
+                padding: "0.75rem",
+                background: inputMode === "youtube" ? "rgba(255, 122, 61, 0.2)" : "transparent",
+                border: "none",
+                borderBottom: inputMode === "youtube" ? "2px solid #ff7a3d" : "2px solid transparent",
+                color: inputMode === "youtube" ? "#ff7a3d" : "#888",
+                cursor: "pointer",
+                fontSize: "0.9rem",
+                fontWeight: inputMode === "youtube" ? 600 : 400
+              }}
+            >
+              YouTube
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setInputMode("microphone");
+                // Cleanup YouTube if loaded
+                if (youtubeVideo) {
+                  cleanupVideo(youtubeVideo.video_id);
+                  setYoutubeVideo(null);
+                  if (videoScriptProcessorRef.current) {
+                    videoScriptProcessorRef.current.disconnect();
+                    videoScriptProcessorRef.current = null;
+                  }
+                  if (videoSourceRef.current) {
+                    videoSourceRef.current.disconnect();
+                    videoSourceRef.current = null;
+                  }
+                  if (videoAudioContextRef.current) {
+                    videoAudioContextRef.current.close();
+                    videoAudioContextRef.current = null;
+                  }
+                }
+              }}
+              style={{
+                flex: 1,
+                padding: "0.75rem",
+                background: inputMode === "microphone" ? "rgba(255, 122, 61, 0.2)" : "transparent",
+                border: "none",
+                borderBottom: inputMode === "microphone" ? "2px solid #ff7a3d" : "2px solid transparent",
+                color: inputMode === "microphone" ? "#ff7a3d" : "#888",
+                cursor: "pointer",
+                fontSize: "0.9rem",
+                fontWeight: inputMode === "microphone" ? 600 : 400
+              }}
+            >
+              Microphone
+            </button>
+          </div>
+
+          {/* YouTube Mode */}
+          {inputMode === "youtube" && (
+            <section className="block">
+              <h2>YouTube Live Analysis</h2>
+            <div className="stack">
+              <label className="label" htmlFor="youtube-url">
+                YouTube video URL
+              </label>
+              <input
+                id="youtube-url"
+                type="text"
+                placeholder="https://www.youtube.com/watch?v=..."
+                value={youtubeUrl}
+                onChange={(e) => setYoutubeUrl(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "0.5rem",
+                  borderRadius: "4px",
+                  border: "1px solid #444",
+                  background: "#1a1a1a",
+                  color: "#eee"
+                }}
+              />
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!youtubeUrl.trim()) {
+                    setYoutubeError("Please enter a YouTube URL");
+                    return;
+                  }
+
+                  // Cleanup previous video audio context before loading new video
+                  // This is critical because createMediaElementSource can only be called once per element
+                  if (videoScriptProcessorRef.current) {
+                    videoScriptProcessorRef.current.disconnect();
+                    videoScriptProcessorRef.current = null;
+                  }
+                  if (videoSourceRef.current) {
+                    videoSourceRef.current.disconnect();
+                    videoSourceRef.current = null;
+                  }
+                  if (videoAnalyserRef.current) {
+                    videoAnalyserRef.current.disconnect();
+                    videoAnalyserRef.current = null;
+                  }
+                  if (videoAudioContextRef.current) {
+                    videoAudioContextRef.current.close();
+                    videoAudioContextRef.current = null;
+                  }
+                  videoAudioBufferRef.current = [];
+                  setYoutubeAnalyzing(false);
+
+                  setYoutubePreparing(true);
+                  setYoutubeError("");
+                  setYoutubeVideo(null);
+                  try {
+                    const result = await prepareYouTubeVideo(youtubeUrl);
+                    setYoutubeVideo(result);
+                  } catch (err) {
+                    setYoutubeError(err instanceof Error ? err.message : "Failed to prepare video");
+                  } finally {
+                    setYoutubePreparing(false);
+                  }
+                }}
+                disabled={youtubePreparing || !modelStatus?.loaded}
+              >
+                {youtubePreparing ? "Downloading..." : "Load Video"}
+              </button>
+              {youtubeError && <p className="error">{youtubeError}</p>}
+              {youtubeVideo && (
+                <div style={{
+                  padding: "0.75rem",
+                  background: "rgba(0,0,0,0.3)",
+                  borderRadius: "6px",
+                  fontSize: "0.8rem"
+                }}>
+                  <div style={{ fontWeight: 600, marginBottom: "0.5rem" }}>
+                    {youtubeVideo.title}
+                  </div>
+                  <div className="info-line">
+                    <span>Duration</span>
+                    <span>{Math.floor(youtubeVideo.duration_s / 60)}:{String(Math.floor(youtubeVideo.duration_s % 60)).padStart(2, '0')}</span>
+                  </div>
+                  <video
+                    ref={videoRef}
+                    src={getVideoStreamUrl(youtubeVideo.video_id)}
+                    controls
+                    crossOrigin="anonymous"
+                    style={{
+                      width: "100%",
+                      borderRadius: "4px",
+                      marginTop: "0.5rem"
+                    }}
+                    onPlay={() => {
+                      if (!videoRef.current) return;
+
+                      // Create audio context and connect to video
+                      if (!videoAudioContextRef.current) {
+                        const audioContext = new AudioContext();
+                        const source = audioContext.createMediaElementSource(videoRef.current);
+                        const scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+
+                        // Create analyser for spectrogram
+                        const analyser = audioContext.createAnalyser();
+                        analyser.fftSize = 2048;
+                        analyser.smoothingTimeConstant = 0.8;
+
+                        // Connect: source -> analyser -> scriptProcessor -> destination
+                        source.connect(analyser);
+                        source.connect(scriptProcessor);
+                        scriptProcessor.connect(audioContext.destination);
+                        source.connect(audioContext.destination); // Also play through speakers
+
+                        const maxBufferSamples = audioContext.sampleRate * bufferSeconds;
+                        let currentBufferSamples = 0;
+
+                        scriptProcessor.onaudioprocess = (event) => {
+                          const inputData = event.inputBuffer.getChannelData(0);
+                          const samples = new Float32Array(inputData);
+
+                          videoAudioBufferRef.current.push(samples);
+                          currentBufferSamples += samples.length;
+
+                          // When buffer is full, trigger classification
+                          if (currentBufferSamples >= maxBufferSamples) {
+                            currentBufferSamples = 0;
+                            classifyVideoBuffer(audioContext.sampleRate);
+                          }
+                        };
+
+                        videoAudioContextRef.current = audioContext;
+                        videoSourceRef.current = source;
+                        videoScriptProcessorRef.current = scriptProcessor;
+                        videoAnalyserRef.current = analyser;
+                      }
+                      setYoutubeAnalyzing(true);
+                    }}
+                    onPause={() => {
+                      setYoutubeAnalyzing(false);
+                    }}
+                    onEnded={() => {
+                      setYoutubeAnalyzing(false);
+                    }}
+                  />
+                  <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={async () => {
+                        if (youtubeVideo) {
+                          await cleanupVideo(youtubeVideo.video_id);
+                          setYoutubeVideo(null);
+                          // Cleanup audio context
+                          if (videoScriptProcessorRef.current) {
+                            videoScriptProcessorRef.current.disconnect();
+                            videoScriptProcessorRef.current = null;
+                          }
+                          if (videoSourceRef.current) {
+                            videoSourceRef.current.disconnect();
+                            videoSourceRef.current = null;
+                          }
+                          if (videoAudioContextRef.current) {
+                            videoAudioContextRef.current.close();
+                            videoAudioContextRef.current = null;
+                          }
+                        }
+                      }}
+                      style={{ fontSize: "0.75rem" }}
+                    >
+                      Clear video
+                    </button>
+                  </div>
+                  {youtubeAnalyzing && (
+                    <div style={{ marginTop: "0.5rem", color: "#5ce3a2", fontSize: "0.75rem" }}>
+                      ● Analyzing audio in real-time...
+                    </div>
+                  )}
+                </div>
+              )}
+<p className="muted" style={{ fontSize: "0.75rem" }}>
+                Downloads video via yt-dlp, plays locally with real-time FLAM analysis.
+                FLAM scores update as the video plays.
+              </p>
+            </div>
+          </section>
+          )}
+
+          {/* Microphone Mode */}
+          {inputMode === "microphone" && (
+            <>
           <section className="block">
-            <h2>FLAM Prompts</h2>
+            <h2>Microphone Capture</h2>
+            <div className="stack">
+              <label className="label" htmlFor="device-select">
+                Microphone
+              </label>
+              <select
+                id="device-select"
+                value={selectedDeviceId}
+                onChange={(event) => setSelectedDeviceId(event.target.value)}
+              >
+                {devices.length === 0 && <option>No devices found</option>}
+                {devices.map((device, index) => (
+                  <option key={device.deviceId || index} value={device.deviceId}>
+                    {device.label || `Mic ${index + 1}`}
+                  </option>
+                ))}
+              </select>
+              <div className="row">
+                <button type="button" onClick={requestPermission}>
+                  Request access
+                </button>
+                <button
+                  type="button"
+                  onClick={refreshDevices}
+                  className="ghost"
+                >
+                  Refresh devices
+                </button>
+              </div>
+              <div className="row">
+                <button type="button" onClick={startMonitoring}>
+                  Start monitoring
+                </button>
+                <button type="button" onClick={stopMonitoring} className="ghost">
+                  Stop
+                </button>
+              </div>
+              <p className="muted">Permission: {permissionState}</p>
+              {error && <p className="error">{error}</p>}
+            </div>
+
+            <div className="meter">
+              <div className="meter-label">
+                Mic level <span>{levelPercent}%</span>
+              </div>
+              <div className="meter-track">
+                <div
+                  className="meter-fill"
+                  style={{ width: `${levelPercent}%` }}
+                />
+              </div>
+            </div>
+          </section>
+            </>
+          )}
+
+          {/* Shared: Prompts Configuration */}
+          <section className="block">
+            <h2>Sound Categories</h2>
             <div className="stack">
               <label className="label" htmlFor="prompt-input">
                 Sound categories to detect (semicolon-separated)
@@ -840,16 +1397,35 @@ function App() {
                   color: "#eee"
                 }}
               />
-              <button
+<button
                 type="button"
                 onClick={() => {
                   const parsed = promptInput
                     .split(";")
                     .map((p) => p.trim())
                     .filter((p) => p.length > 0);
-                  if (parsed.length > 0) {
-                    setPrompts(parsed);
+
+                  // Deduplicate prompts (case-insensitive)
+                  const seen = new Set<string>();
+                  const uniquePrompts: string[] = [];
+                  for (const prompt of parsed) {
+                    const lowerPrompt = prompt.toLowerCase();
+                    if (!seen.has(lowerPrompt)) {
+                      seen.add(lowerPrompt);
+                      uniquePrompts.push(prompt); // Keep original casing
+                    }
+                  }
+
+                  if (uniquePrompts.length > 0) {
+                    setPrompts(uniquePrompts);
+                    // Update textarea to show deduplicated prompts
+                    setPromptInput(uniquePrompts.join("; "));
                     setClassificationScores({});
+                    // Update music decomposition toggle state
+                    setMusicDecomposition(
+                      uniquePrompts.length === MUSIC_DECOMPOSITION_PROMPTS.length &&
+                      uniquePrompts.every((p, i) => p.toLowerCase() === MUSIC_DECOMPOSITION_PROMPTS[i].toLowerCase())
+                    );
                   }
                 }}
               >
@@ -858,6 +1434,38 @@ function App() {
               <p className="muted">
                 {prompts.length} active prompts. Use semicolons to separate; commas are allowed within prompts.
               </p>
+
+              {/* Music Decomposition Toggle - subtle, below prompts */}
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                marginTop: "0.25rem"
+              }}>
+                <input
+                  type="checkbox"
+                  id="music-decomposition-toggle"
+                  checked={musicDecomposition}
+                  onChange={(e) => {
+                    const enabled = e.target.checked;
+                    setMusicDecomposition(enabled);
+                    if (enabled) {
+                      setPrompts(MUSIC_DECOMPOSITION_PROMPTS);
+                      setPromptInput(MUSIC_DECOMPOSITION_PROMPTS.join("; "));
+                      setClassificationScores({});
+                      setScoresExpanded(false);
+                    } else {
+                      setPrompts(DEFAULT_PROMPTS);
+                      setPromptInput(DEFAULT_PROMPTS.join("; "));
+                      setClassificationScores({});
+                    }
+                  }}
+                />
+                <label htmlFor="music-decomposition-toggle" style={{ fontSize: "0.85rem", color: "#9aa7bd" }}>
+                  Music Decomposition ({MUSIC_DECOMPOSITION_PROMPTS.length} instruments)
+                </label>
+              </div>
+
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.5rem" }}>
                 <input
                   type="checkbox"
@@ -869,11 +1477,22 @@ function App() {
                   Relative mode (min-max normalization)
                 </label>
               </div>
-              <p className="muted" style={{ fontSize: "0.75rem", marginTop: "0.25rem" }}>
+<p className="muted" style={{ fontSize: "0.75rem", marginTop: "0.25rem" }}>
                 {normalizeScores
                   ? "Showing relative differences (best=1, worst=0)"
                   : "Clamped mode: negative→0, positive→value (matches paper)"}
               </p>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.5rem" }}>
+                <input
+                  type="checkbox"
+                  id="sort-toggle"
+                  checked={sortByScore}
+                  onChange={(e) => setSortByScore(e.target.checked)}
+                />
+                <label htmlFor="sort-toggle" style={{ fontSize: "0.85rem" }}>
+                  Sort by score (highest first)
+                </label>
+              </div>
               {classifyError && <p className="error">{classifyError}</p>}
             </div>
           </section>
@@ -984,62 +1603,7 @@ function App() {
             </div>
           </section>
 
-          <section className="block">
-            <h2>Capture</h2>
-            <div className="stack">
-              <label className="label" htmlFor="device-select">
-                Microphone
-              </label>
-              <select
-                id="device-select"
-                value={selectedDeviceId}
-                onChange={(event) => setSelectedDeviceId(event.target.value)}
-              >
-                {devices.length === 0 && <option>No devices found</option>}
-                {devices.map((device, index) => (
-                  <option key={device.deviceId || index} value={device.deviceId}>
-                    {device.label || `Mic ${index + 1}`}
-                  </option>
-                ))}
-              </select>
-              <div className="row">
-                <button type="button" onClick={requestPermission}>
-                  Request access
-                </button>
-                <button
-                  type="button"
-                  onClick={refreshDevices}
-                  className="ghost"
-                >
-                  Refresh devices
-                </button>
-              </div>
-              <div className="row">
-                <button type="button" onClick={startMonitoring}>
-                  Start monitoring
-                </button>
-                <button type="button" onClick={stopMonitoring} className="ghost">
-                  Stop
-                </button>
-              </div>
-              <p className="muted">Permission: {permissionState}</p>
-              {error && <p className="error">{error}</p>}
-            </div>
-
-            <div className="meter">
-              <div className="meter-label">
-                Mic level <span>{levelPercent}%</span>
-              </div>
-              <div className="meter-track">
-                <div
-                  className="meter-fill"
-                  style={{ width: `${levelPercent}%` }}
-                />
-              </div>
-            </div>
-          </section>
-
-          <section className="block">
+<section className="block">
             <h2>System snapshot</h2>
             <div className="stack">
               <div className="section-label">Host (backend)</div>
@@ -1189,7 +1753,52 @@ function App() {
               </span>
             </div>
 
-            {/* Numerical scores display */}
+            {/* Scrolling heatmap visualization - labels on right */}
+            {(() => {
+              // Dynamic height: minimum 240px, or 12px per prompt for readability
+              const heatmapHeight = Math.max(240, prompts.length * 12);
+              return (
+                <div className="heatmap-wrap" style={{ height: heatmapHeight }}>
+                  <canvas
+                    ref={heatmapRef}
+                    width={960}
+                    height={heatmapHeight}
+                    className="plot-canvas"
+                  />
+                  <div className="heatmap-labels" style={{ height: heatmapHeight }}>
+                    {prompts.map((prompt) => (
+                      <span key={prompt}>{prompt}</span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Expand/Collapse button */}
+            {prompts.length > MAX_VISIBLE_PROMPTS && (
+              <button
+                type="button"
+                onClick={() => setScoresExpanded(!scoresExpanded)}
+                style={{
+                  width: "100%",
+                  padding: "0.5rem",
+                  marginTop: "0.5rem",
+                  marginBottom: "0.5rem",
+                  background: "rgba(255,255,255,0.05)",
+                  border: "1px solid #333",
+                  borderRadius: "4px",
+                  color: "#aaa",
+                  cursor: "pointer",
+                  fontSize: "0.8rem"
+                }}
+              >
+                {scoresExpanded
+                  ? `▲ Collapse (showing ${prompts.length} prompts)`
+                  : `▼ Expand all ${prompts.length} prompts (showing ${MAX_VISIBLE_PROMPTS})`}
+              </button>
+            )}
+
+            {/* Numerical scores display - now below heatmap, collapsible */}
             <div className="scores-panel" style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
@@ -1198,7 +1807,9 @@ function App() {
               background: "rgba(0,0,0,0.3)",
               borderRadius: "6px",
               marginBottom: "0.75rem",
-              fontSize: "0.8rem"
+              fontSize: "0.8rem",
+              maxHeight: scoresExpanded ? "none" : "320px",
+              overflowY: scoresExpanded ? "visible" : "auto"
             }}>
               {(() => {
                 // Compute display scores based on mode
@@ -1210,7 +1821,20 @@ function App() {
                       : clampScoresToPositive(classificationScores))
                   : null;
 
-                return prompts.map((prompt) => {
+                // Get prompts to display based on expanded state and sorting
+                let sortedPrompts = [...prompts];
+                if (sortByScore && Object.keys(classificationScores).length > 0) {
+                  sortedPrompts.sort((a, b) => {
+                    const scoreA = classificationScores[a] ?? -Infinity;
+                    const scoreB = classificationScores[b] ?? -Infinity;
+                    return scoreB - scoreA; // Descending order
+                  });
+                }
+                const visiblePrompts = scoresExpanded
+                  ? sortedPrompts
+                  : sortedPrompts.slice(0, MAX_VISIBLE_PROMPTS);
+
+                return visiblePrompts.map((prompt) => {
                   const rawScore = classificationScores[prompt];
                   const hasScore = rawScore !== undefined;
 
@@ -1272,27 +1896,6 @@ function App() {
               })()}
             </div>
 
-            <div className="heatmap-wrap">
-              <div className="heatmap-labels">
-                {prompts.map((prompt) => (
-                  <span key={prompt}>{prompt}</span>
-                ))}
-              </div>
-              <canvas
-                ref={heatmapRef}
-                width={960}
-                height={240}
-                className="plot-canvas"
-              />
-              <div className="heatmap-scale">
-                <div className="scale-gradient" />
-                <div className="scale-labels">
-                  <span>1</span>
-                  <span>0.5</span>
-                  <span>0</span>
-                </div>
-              </div>
-            </div>
             <p className="figure-note muted">
               {modelStatus?.loaded
                 ? `✅ FLAM ready on ${modelStatus.device}`

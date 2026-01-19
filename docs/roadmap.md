@@ -1,10 +1,10 @@
 # FLAM Browser App Roadmap
 
 > **Last Updated**: January 19, 2026
-> **Current Phase**: Live inference wired ✅ → Optimization & Polish
+> **Current Phase**: YouTube Live Analysis ✅ → Bug Fixes & Presets
 
 ## Product Vision
-Deliver a modern, browser-first audio console that lets users pick a microphone, validate live audio input, and continuously categorize sounds via FLAM with clear latency tradeoffs. The experience should feel seamless locally and in production, with an inference service that can scale independently of the UI.
+Deliver a modern, browser-first audio console that lets users analyze audio from YouTube videos OR live microphone input with real-time FLAM classification. The experience should feel seamless locally and in production, with an inference service that can scale independently of the UI.
 
 ### Product Tenets
 - Real-time first: the UI surfaces latency, buffer size, and confidence clearly.
@@ -41,6 +41,35 @@ Deliver a modern, browser-first audio console that lets users pick a microphone,
 ---
 
 ## Status
+
+### ✅ Done (v0.4.0 - YouTube Live Analysis)
+
+#### Backend (New)
+- [x] `/prepare-youtube-video` endpoint - downloads video via yt-dlp
+- [x] `/stream-video/{video_id}` endpoint - streams video for HTML5 playback
+- [x] `/cleanup-video/{video_id}` endpoint - frees disk space after use
+- [x] `/analyze-youtube` endpoint - batch analysis of YouTube audio (chunked)
+- [x] Video caching with hash-based deduplication
+- [x] Automatic temp file cleanup on server restart
+
+#### Frontend (New)
+- [x] YouTube/Microphone tab switcher - dual input mode support
+- [x] YouTube URL input with video preparation workflow
+- [x] Embedded video player with native controls
+- [x] Real-time audio extraction from video via Web Audio API
+- [x] Live FLAM classification while video plays
+- [x] Music Decomposition mode (45 instrument prompts)
+- [x] Collapsible scores panel for large prompt lists
+- [x] Sort by score toggle (highest first)
+- [x] Heatmap labels moved to right side for better readability
+- [x] Dynamic heatmap height based on prompt count
+
+#### Installer Updates
+- [x] FFmpeg detection and optional install prompt (macOS/Windows)
+- [x] yt-dlp added to backend requirements
+- [x] Session cleanup on startup (kill stale processes, clear temp files)
+- [x] CPU core detection for optimal PyTorch threading
+- [x] Backend health check with wait loop before opening browser
 
 ### ✅ Done (v0.3.0)
 

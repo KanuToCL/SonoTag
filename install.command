@@ -101,6 +101,25 @@ pip install -r backend/requirements.txt
 echo "Installing OpenFLAM dependencies (this may take a while)..."
 pip install -e openflam
 
+# Check for FFmpeg (optional but recommended for YouTube feature)
+if ! command -v ffmpeg >/dev/null 2>&1; then
+  echo
+  echo "⚠️  FFmpeg not found (optional but recommended for YouTube analysis)."
+  if command -v brew >/dev/null 2>&1; then
+    read -r -p "Install FFmpeg via Homebrew? [y/N]: " INSTALL_FFMPEG
+    if [[ "$INSTALL_FFMPEG" =~ ^[Yy]$ ]]; then
+      brew install ffmpeg
+    else
+      echo "Skipping FFmpeg. YouTube analysis will still work but may be limited."
+    fi
+  else
+    echo "To install manually: brew install ffmpeg"
+    echo "YouTube analysis will still work but may be limited to some formats."
+  fi
+else
+  echo "✅ FFmpeg found: $(which ffmpeg)"
+fi
+
 MODEL_PATH="openflam_ckpt/open_flam_oct17.pth"
 if [ ! -f "$MODEL_PATH" ]; then
   read -r -p "Download FLAM model weights (~800MB)? [y/N]: " DOWNLOAD_MODEL

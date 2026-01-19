@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal EnableDelayedExpansion
 cd /d %~dp0
 
 set "PYTHON_EXE="
@@ -73,6 +73,24 @@ pip install -e openflam
 if errorlevel 1 (
   echo OpenFLAM install failed.
   goto :fail
+)
+
+where ffmpeg >nul 2>nul
+if errorlevel 1 (
+  echo.
+  echo WARNING: FFmpeg not found ^(optional but recommended for YouTube analysis^).
+  echo You can install it manually from https://ffmpeg.org/download.html
+  echo or via winget: winget install -e --id Gyan.FFmpeg
+  echo.
+  set /p INSTALL_FFMPEG=Install FFmpeg via winget? [y/N]:
+  if /I "!INSTALL_FFMPEG!"=="y" (
+    where winget >nul 2>nul
+    if errorlevel 1 (
+      echo winget not available. Please install FFmpeg manually.
+    ) else (
+      winget install -e --id Gyan.FFmpeg
+    )
+  )
 )
 
 if not exist openflam_ckpt\open_flam_oct17.pth (

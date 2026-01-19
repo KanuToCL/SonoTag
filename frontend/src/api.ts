@@ -3,6 +3,8 @@ import type {
   ClassifyLocalResponse,
   ModelStatusResponse,
   PromptsResponse,
+  YouTubeAnalysisResponse,
+  PrepareVideoResponse,
 } from "./types";
 
 const API_BASE_URL =
@@ -179,4 +181,87 @@ export function resampleAudio(
   }
 
   return result;
+}
+
+/**
+ * Analyze audio from a YouTube video using FLAM.
+ * Downloads the audio, splits into chunks, and runs FLAM inference on each chunk.
+ *
+ * @param url - YouTube video URL
+ * @param customPrompts - Optional array of custom prompts to use instead of defaults
+ * @param chunkDurationS - Duration of each chunk to analyze (default 10s)
+ * @param maxDurationS - Maximum video duration to analyze (default 60s)
+ */
+export async function analyzeYouTube(
+  url: string,
+  customPrompts?: string[],
+  chunkDurationS: number = 10.0,
+  maxDurationS: number = 60.0
+): Promise<YouTubeAnalysisResponse> {
+  const response = await fetch(`${API_BASE_URL}/analyze-youtube`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      url,
+      prompts: customPrompts ? customPrompts.join("; ") : null,
+      chunk_duration_s: chunkDurationS,
+      max_duration_s: maxDurationS,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(
+      error.detail || `YouTube analysis failed: ${response.statusText}`
+    );
+  }
+
+  return response.json();
+}
+
+/**
+ * Prepare a YouTube video for local playback with FLAM analysis.
+ * Downloads the video and returns a local URL for streaming.
+ *
+ * @param url - YouTube video URL
+ */
+export async function prepareYouTubeVideo(
+  url: string
+): Promise<PrepareVideoResponse> {
+  const response = await fetch(`${API_BASE_URL}/prepare-youtube-video`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      url,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(
+      error.detail || `Failed to prepare video: ${response.statusText}`
+    );
+  }
+
+  return response.json();
+}
+
+/**
+ * Get the streaming URL for a prepared video.
+ */
+export function getVideoStreamUrl(videoId: string): string {
+  return `${API_BASE_URL}/stream-video/${videoId}`;
+}
+
+/**
+ * Clean up a prepared video to free disk space.
+ */
+export async function cleanupVideo(videoId: string): Promise<void> {
+  await fetch(`${API_BASE_URL}/cleanup-video/${videoId}`, {
+    method: "DELETE",
+  });
 }

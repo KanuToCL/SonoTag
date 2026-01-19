@@ -135,3 +135,39 @@ export interface ClassificationResult {
   scores: Record<string, number>;
   timestamp: number;
 }
+
+// =============================================================================
+// YouTube Analysis Types
+// =============================================================================
+
+export interface YouTubeChunkResult {
+  chunk_index: number;
+  start_time_s: number;
+  end_time_s: number;
+  global_scores: Record<string, number>;
+  frame_scores: Record<string, number[]>;
+}
+
+export interface YouTubeAnalysisResponse {
+  video_title: string;
+  video_duration_s: number;
+  analyzed_duration_s: number;
+  num_chunks: number;
+  prompts: string[];
+  chunks: YouTubeChunkResult[];
+  aggregated_scores: Record<string, number>;
+  timing: {
+    download_ms: number;
+    load_ms: number;
+    inference_ms: number;
+    total_ms: number;
+  };
+}
+
+export interface PrepareVideoResponse {
+  video_id: string;
+  title: string;
+  duration_s: number;
+  video_url: string;
+  ready: boolean;
+}

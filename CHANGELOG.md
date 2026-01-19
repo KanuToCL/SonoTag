@@ -2,6 +2,49 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2026-01-19
+
+### Added - YouTube Live Analysis 🎬
+- **YouTube video integration**: Load any YouTube video and analyze its audio in real-time
+  - `/prepare-youtube-video` endpoint downloads video via yt-dlp
+  - `/stream-video/{video_id}` endpoint streams video for HTML5 playback
+  - `/cleanup-video/{video_id}` endpoint cleans up temporary files
+  - `/analyze-youtube` endpoint for batch analysis (chunked processing)
+
+- **Dual input mode**: Tab switcher between YouTube and Microphone modes
+  - YouTube mode: Paste URL → Download → Play with real-time FLAM analysis
+  - Microphone mode: Original live audio capture workflow
+
+- **Music Decomposition mode**: Toggle to switch to 45 instrument prompts
+  - Covers strings, woodwinds, brass, percussion, keyboard, and vocals
+  - Great for analyzing music composition and identifying instruments
+
+- **Collapsible scores panel**: For large prompt lists (>10)
+  - "Expand all" / "Collapse" button
+  - Scrollable when collapsed (max 320px height)
+
+- **Sort by score toggle**: Order prompts by highest score first
+
+- **Heatmap improvements**:
+  - Labels moved to right side for better readability
+  - Dynamic height based on prompt count (min 240px, or 12px per prompt)
+
+### Changed - Installer & Runtime
+- **Session cleanup on startup**: Kills stale processes and clears temp files
+- **CPU core detection**: Optimizes PyTorch threading (OMP_NUM_THREADS, MKL_NUM_THREADS)
+- **Backend health check**: Waits for model to load before opening browser
+- **FFmpeg detection**: Optional install prompt for YouTube audio extraction
+
+### Technical Notes
+- Video files are cached with hash-based deduplication
+- Web Audio API extracts audio from HTML5 video element in real-time
+- ScriptProcessorNode buffers audio and triggers classification when buffer is full
+- yt-dlp handles video download with format selection (720p max for browser compatibility)
+
+### Known Issues
+- Classification continues briefly when video is paused (to be fixed)
+- Buffer duration changes require video restart to take effect (to be fixed)
+
 ## [0.3.2] - 2026-01-19
 
 ### Added

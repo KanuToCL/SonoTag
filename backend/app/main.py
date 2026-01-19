@@ -1,10 +1,13 @@
+import hashlib
 import io
 import json
 import logging
 import os
 import platform
 import re
+import shutil
 import subprocess
+import tempfile
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -14,6 +17,7 @@ import psutil
 import torch
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 # Configure logging
@@ -880,3 +884,397 @@ async def classify_audio_local(
         postprocessed=postprocess,
         timing=timing,
     )
+
+
+# =============================================================================
+# YouTube Analysis Endpoint
+# =============================================================================
+
+
+class YouTubeAnalysisRequest(BaseModel):
+    """Request for YouTube audio analysis."""
+
+    url: str
+    prompts: Optional[str] = None  # Semicolon-separated prompts
+    chunk_duration_s: float = 10.0  # Duration of each chunk to analyze
+    max_duration_s: float = 60.0  # Maximum video duration to analyze
+
+
+class YouTubeChunkResult(BaseModel):
+    """Result for a single chunk of YouTube audio."""
+
+    chunk_index: int
+    start_time_s: float
+    end_time_s: float
+    global_scores: dict[str, float]
+    frame_scores: dict[str, list[float]]
+
+
+class YouTubeAnalysisResponse(BaseModel):
+    """Response from YouTube audio analysis."""
+
+    video_title: str
+    video_duration_s: float
+    analyzed_duration_s: float
+    num_chunks: int
+    prompts: list[str]
+    chunks: list[YouTubeChunkResult]
+    aggregated_scores: dict[str, float]  # Mean across all chunks
+    timing: dict[str, float]
+
+
+@app.post("/analyze-youtube", response_model=YouTubeAnalysisResponse)
+async def analyze_youtube(request: YouTubeAnalysisRequest) -> YouTubeAnalysisResponse:
+    """
+    Analyze audio from a YouTube video using FLAM.
+
+    Downloads the audio using yt-dlp, splits into chunks, and runs FLAM inference
+    on each chunk. Returns per-chunk and aggregated scores.
+
+    Args:
+        request: YouTube URL and analysis parameters
+    """
+    global flam_model, device
+
+    import shutil
+    import tempfile
+
+    # Check if model is loaded
+    if flam_model is None:
+        raise HTTPException(
+            status_code=503,
+            detail="FLAM model not loaded. Check server logs.",
+        )
+
+    # Check if yt-dlp is available
+    try:
+        import yt_dlp
+    except ImportError:
+        raise HTTPException(
+            status_code=503,
+            detail="yt-dlp not installed. Run: pip install yt-dlp",
+        )
+
+    # Parse prompts
+    if request.prompts:
+        prompt_list = [p.strip() for p in request.prompts.split(";") if p.strip()]
+        if not prompt_list:
+            prompt_list = DEFAULT_PROMPTS
+    else:
+        prompt_list = DEFAULT_PROMPTS
+
+    timing = {}
+    t_start = time.perf_counter()
+
+    # Create temp directory for audio
+    temp_dir = tempfile.mkdtemp(prefix="sonotag_yt_")
+
+    try:
+        # Download audio using yt-dlp
+        t_download_start = time.perf_counter()
+
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "outtmpl": os.path.join(temp_dir, "audio.%(ext)s"),
+            "quiet": True,
+            "no_warnings": True,
+        }
+
+        video_title = "Unknown"
+        video_duration = 0.0
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            try:
+                info = ydl.extract_info(request.url, download=True)
+                video_title = info.get("title", "Unknown")
+                video_duration = info.get("duration", 0) or 0
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Failed to download YouTube audio: {e}",
+                )
+
+        t_download_end = time.perf_counter()
+        timing["download_ms"] = round((t_download_end - t_download_start) * 1000, 2)
+
+        logger.info(f"Downloaded YouTube audio: {video_title} ({video_duration}s)")
+
+        # Find the downloaded audio file (could be any format without FFmpeg)
+        audio_file = None
+        for f in os.listdir(temp_dir):
+            if f.startswith("audio.") and not f.endswith(".part"):
+                audio_file = os.path.join(temp_dir, f)
+                break
+
+        if not audio_file:
+            # List files for debugging
+            files_in_dir = os.listdir(temp_dir)
+            logger.error(f"Files in temp dir: {files_in_dir}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to find downloaded audio file. Files found: {files_in_dir}",
+            )
+
+        # Load audio
+        t_load_start = time.perf_counter()
+        try:
+            full_audio, sr = librosa.load(audio_file, sr=SAMPLE_RATE, mono=True)
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to load audio: {e}",
+            )
+        t_load_end = time.perf_counter()
+        timing["load_ms"] = round((t_load_end - t_load_start) * 1000, 2)
+
+        actual_duration = len(full_audio) / SAMPLE_RATE
+        logger.info(f"Loaded audio: {actual_duration:.2f}s at {SAMPLE_RATE}Hz")
+
+        # Limit to max duration
+        max_samples = int(min(request.max_duration_s, actual_duration) * SAMPLE_RATE)
+        if len(full_audio) > max_samples:
+            full_audio = full_audio[:max_samples]
+            actual_duration = len(full_audio) / SAMPLE_RATE
+
+        # Split into chunks
+        chunk_samples = int(request.chunk_duration_s * SAMPLE_RATE)
+        chunks = []
+        chunk_results = []
+
+        t_inference_start = time.perf_counter()
+
+        for i, start_sample in enumerate(range(0, len(full_audio), chunk_samples)):
+            end_sample = min(start_sample + chunk_samples, len(full_audio))
+            chunk_audio = full_audio[start_sample:end_sample]
+
+            # Tile if needed (FLAM expects 10s = 480,000 samples)
+            if len(chunk_audio) < EXPECTED_SAMPLES:
+                repeats_needed = int(np.ceil(EXPECTED_SAMPLES / len(chunk_audio)))
+                chunk_audio = np.tile(chunk_audio, repeats_needed)[:EXPECTED_SAMPLES]
+
+            # Convert to tensor
+            audio_tensor = torch.tensor(chunk_audio).unsqueeze(0).to(device)
+
+            # Run FLAM inference
+            with torch.no_grad():
+                local_similarity = flam_model.get_local_similarity(
+                    audio=audio_tensor,
+                    text=prompt_list,
+                    method="unbiased",
+                    cross_product=True,
+                )
+
+                local_sim_np = local_similarity.squeeze(0).cpu().numpy()
+
+                frame_scores = {}
+                global_scores = {}
+
+                for j, prompt in enumerate(prompt_list):
+                    scores_per_frame = local_sim_np[j].tolist()
+                    frame_scores[prompt] = [round(s, 4) for s in scores_per_frame]
+                    global_scores[prompt] = round(float(np.mean(local_sim_np[j])), 4)
+
+            chunk_results.append(
+                YouTubeChunkResult(
+                    chunk_index=i,
+                    start_time_s=round(start_sample / SAMPLE_RATE, 2),
+                    end_time_s=round(end_sample / SAMPLE_RATE, 2),
+                    global_scores=global_scores,
+                    frame_scores=frame_scores,
+                )
+            )
+
+        t_inference_end = time.perf_counter()
+        timing["inference_ms"] = round((t_inference_end - t_inference_start) * 1000, 2)
+
+        # Compute aggregated scores (mean across all chunks)
+        aggregated_scores = {}
+        for prompt in prompt_list:
+            all_chunk_scores = [c.global_scores[prompt] for c in chunk_results]
+            aggregated_scores[prompt] = round(float(np.mean(all_chunk_scores)), 4)
+
+    finally:
+        # Cleanup temp directory
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    t_end = time.perf_counter()
+    timing["total_ms"] = round((t_end - t_start) * 1000, 2)
+
+    return YouTubeAnalysisResponse(
+        video_title=video_title,
+        video_duration_s=round(video_duration, 2),
+        analyzed_duration_s=round(actual_duration, 2),
+        num_chunks=len(chunk_results),
+        prompts=prompt_list,
+        chunks=chunk_results,
+        aggregated_scores=aggregated_scores,
+        timing=timing,
+    )
+
+
+# =============================================================================
+# YouTube Video Streaming (for live playback + FLAM analysis)
+# =============================================================================
+
+# Store prepared videos in memory (simple cache)
+_prepared_videos: dict[str, dict] = {}
+
+
+class PrepareVideoRequest(BaseModel):
+    """Request to prepare a YouTube video for playback."""
+
+    url: str
+
+
+class PrepareVideoResponse(BaseModel):
+    """Response after preparing a YouTube video."""
+
+    video_id: str
+    title: str
+    duration_s: float
+    video_url: str  # URL to stream the video
+    ready: bool
+
+
+@app.post("/prepare-youtube-video", response_model=PrepareVideoResponse)
+async def prepare_youtube_video(request: PrepareVideoRequest) -> PrepareVideoResponse:
+    """
+    Prepare a YouTube video for local playback.
+
+    Downloads the video using yt-dlp and stores it for streaming.
+    Returns a local URL that can be used in a <video> element.
+    """
+    try:
+        import yt_dlp
+    except ImportError:
+        raise HTTPException(
+            status_code=503,
+            detail="yt-dlp not installed. Run: pip install yt-dlp",
+        )
+
+    # Create a hash of the URL for the video ID
+    video_id = hashlib.md5(request.url.encode()).hexdigest()[:12]
+
+    # Check if already prepared
+    if video_id in _prepared_videos:
+        info = _prepared_videos[video_id]
+        return PrepareVideoResponse(
+            video_id=video_id,
+            title=info["title"],
+            duration_s=info["duration_s"],
+            video_url=f"/stream-video/{video_id}",
+            ready=True,
+        )
+
+    # Create temp directory for this video
+    video_dir = os.path.join(tempfile.gettempdir(), f"sonotag_video_{video_id}")
+    os.makedirs(video_dir, exist_ok=True)
+
+    # Download video with audio using yt-dlp
+    ydl_opts = {
+        "format": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]/best",  # Prefer mp4 for browser compatibility
+        "outtmpl": os.path.join(video_dir, "video.%(ext)s"),
+        "quiet": True,
+        "no_warnings": True,
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(request.url, download=True)
+            video_title = info.get("title", "Unknown")
+            video_duration = info.get("duration", 0) or 0
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to download YouTube video: {e}",
+        )
+
+    # Find the downloaded video file
+    video_file = None
+    for f in os.listdir(video_dir):
+        if f.startswith("video.") and not f.endswith(".part"):
+            video_file = os.path.join(video_dir, f)
+            break
+
+    if not video_file:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to find downloaded video file",
+        )
+
+    # Store video info
+    _prepared_videos[video_id] = {
+        "title": video_title,
+        "duration_s": video_duration,
+        "file_path": video_file,
+        "dir_path": video_dir,
+    }
+
+    logger.info(f"Prepared YouTube video: {video_title} ({video_duration}s)")
+
+    return PrepareVideoResponse(
+        video_id=video_id,
+        title=video_title,
+        duration_s=video_duration,
+        video_url=f"/stream-video/{video_id}",
+        ready=True,
+    )
+
+
+@app.get("/stream-video/{video_id}")
+async def stream_video(video_id: str):
+    """
+    Stream a prepared YouTube video.
+
+    This endpoint serves the video file for playback in a <video> element.
+    """
+    if video_id not in _prepared_videos:
+        raise HTTPException(
+            status_code=404,
+            detail="Video not found. Please prepare it first.",
+        )
+
+    video_info = _prepared_videos[video_id]
+    video_file = video_info["file_path"]
+
+    if not os.path.exists(video_file):
+        raise HTTPException(
+            status_code=404,
+            detail="Video file not found on disk.",
+        )
+
+    # Determine content type from extension
+    ext = os.path.splitext(video_file)[1].lower()
+    content_type_map = {
+        ".mp4": "video/mp4",
+        ".webm": "video/webm",
+        ".mkv": "video/x-matroska",
+        ".mov": "video/quicktime",
+    }
+    content_type = content_type_map.get(ext, "video/mp4")
+
+    return FileResponse(
+        video_file,
+        media_type=content_type,
+        headers={
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=3600",
+        },
+    )
+
+
+@app.delete("/cleanup-video/{video_id}")
+async def cleanup_video(video_id: str):
+    """
+    Clean up a prepared video to free disk space.
+    """
+    if video_id not in _prepared_videos:
+        return {"status": "not_found"}
+
+    video_info = _prepared_videos.pop(video_id)
+    dir_path = video_info.get("dir_path")
+
+    if dir_path and os.path.exists(dir_path):
+        shutil.rmtree(dir_path, ignore_errors=True)
+
+    return {"status": "cleaned_up", "video_id": video_id}
