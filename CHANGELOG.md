@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.1] - 2026-01-19
+
+### Added - Documentation & Planning
+- **GUI Layout Proposals**: Created `docs/gui-layout-proposal.md` with 4 layout options:
+  - **Focus Mode**: Minimal, visualization-first design
+  - **Power User Mode**: All controls visible in sidebar
+  - **Immersive Flow** ⭐: Dynamic labels (opacity/weight by score), edge fade vignette, spectrogram↔heatmap sync
+  - **Mobile/Compact Mode**: For narrow screens
+- **Action Movie preset**: 24 sound prompts for action film analysis (explosions, gunshots, car chases, etc.)
+- **Sports preset**: 22 sound prompts for sports broadcast analysis (crowd, whistle, commentary, etc.)
+- **Transfer learning roadmap**: Product vision for custom sound fine-tuning in v2.0.0
+- **Synchronized visualizations roadmap**: Frame-wise heatmap painting using FLAM's `frame_scores`
+
+### Fixed
+- **Video pause/play bug**: Classification now stops when video is paused, buffer clears on pause
+- **Buffer duration not updating**: ScriptProcessorNode callback now uses `bufferSecondsRef` to read current value
+- **Tab switching continues analysis**: Switching to Microphone tab now stops YouTube analysis and cleans up audio context
+
+### Technical Notes
+- Added `youtubeAnalyzingRef` and `bufferSecondsRef` to solve JavaScript closure stale state issue
+- Refs keep callbacks in sync with React state changes
+
 ## [0.4.0] - 2026-01-19
 
 ### Added - YouTube Live Analysis 🎬
@@ -41,9 +63,7 @@ All notable changes to this project will be documented in this file.
 - ScriptProcessorNode buffers audio and triggers classification when buffer is full
 - yt-dlp handles video download with format selection (720p max for browser compatibility)
 
-### Known Issues
-- Classification continues briefly when video is paused (to be fixed)
-- Buffer duration changes require video restart to take effect (to be fixed)
+## [0.3.2]
 
 ## [0.3.2] - 2026-01-19
 

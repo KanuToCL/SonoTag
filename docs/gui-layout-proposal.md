@@ -154,6 +154,184 @@ For users who want all controls visible at once.
 
 ---
 
+## Proposed Layout: "Immersive Flow" ⭐ RECOMMENDED
+
+A visualization-first design with dynamic elements that create a sense of audio "flowing" through the interface.
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│  🎧 SonoTag                              [YouTube │ Mic]  [⚙️]  ● Recording      │
+├──────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                  │
+│  ┌────────────────────────────────────────────────────────────────────────────┐ │
+│  │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░┊████████████████████████████████████████│ │
+│  │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░┊████████████████████████████████████████│ │
+│  │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░┊█████████ SPECTROGRAM █████████████████│ │
+│  │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░┊████████████████████████████████████████│ │
+│  │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░┊████████████████████████████████████████│ │
+│  └────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                  │
+│  ┌────────────────────────────────────────────────────────────────────────────┐ │
+│  │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░┊██████████████████  EXPLOSION    ▌ 0.94 │ │
+│  │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░┊█████████████████░  gunshot      ▌ 0.89 │ │
+│  │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░┊███████████████░░░  speech       ▌ 0.72 │ │
+│  │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░┊████████░░░░░░░░░░  car chase      0.45 │ │
+│  │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░┊█████░░░░░░░░░░░░░  footsteps      0.23 │ │
+│  │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░┊░░░░░░░░░░░░░░░░░░  silence        0.05 │ │
+│  └────────────────────────────────────────────────────────────────────────────┘ │
+│              ◄── buffering (faded) ──►┊◄── classified (solid) ──►              │
+│                                                                                  │
+│  ┌─────────────────────────────┐                                                │
+│  │  ▶ 2:34 / 4:26   🔊 ━━━○━━  │  🎬 Action │ 🏈 Sports │ 🎵 Music    Buffer: 4s │
+│  │  Neo vs Merovingian         │                                                │
+│  └─────────────────────────────┘                                                │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Features
+
+#### 1. Edge Fade Effect (Vignette)
+Left edge fades from transparent → solid, creating a sense of audio "flowing in" from the left.
+
+```css
+.visualization-container::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 200px;
+  background: linear-gradient(to right,
+    rgba(9, 13, 18, 1) 0%,
+    rgba(9, 13, 18, 0) 100%
+  );
+  pointer-events: none;
+  z-index: 10;
+}
+```
+
+#### 2. Dynamic Label Styling Based on Score
+
+Labels are **sorted by score (highest first)** by default, with dynamic styling:
+
+| Score | Opacity | Font Weight | Visual Effect |
+|-------|---------|-------------|---------------|
+| 0.9+  | 1.0     | 700 (bold)  | Bright, prominent |
+| 0.7   | 0.8     | 600         | Strong |
+| 0.5   | 0.65    | 500         | Medium |
+| 0.3   | 0.5     | 450         | Subtle |
+| 0.1   | 0.35    | 400         | Faded, ghost-like |
+
+```tsx
+const getLabelStyle = (score: number) => ({
+  opacity: 0.3 + (score * 0.7),              // 0.3 to 1.0
+  fontWeight: 400 + Math.round(score * 300), // 400 to 700
+  color: `rgba(255, ${180 + score * 75}, ${150 + score * 50}, ${0.6 + score * 0.4})`,
+});
+```
+
+Visual result - labels appear to "emerge" from the heatmap:
+```
+██████████████████████████████  EXPLOSION    0.94  ← bold, bright, opaque
+█████████████████████████░░░░░  gunshot      0.89  ← bold, slightly dimmer
+████████████████░░░░░░░░░░░░░░  speech       0.72  ← medium weight
+██████░░░░░░░░░░░░░░░░░░░░░░░░  car chase    0.45  ← lighter weight, faded
+███░░░░░░░░░░░░░░░░░░░░░░░░░░░  footsteps    0.23  ← light, transparent
+░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  silence      0.05  ← ghost-like, nearly invisible
+```
+
+#### 3. Spectrogram ↔ Heatmap Temporal Sync
+
+**The Problem:**
+Currently, the spectrogram scrolls in real-time while the heatmap updates in chunks. This creates a visual disconnect where the heatmap shows classification for audio that hasn't reached the same x-position in the spectrogram.
+
+**The Solution: Aligned Classification Zone**
+
+```
+SPECTROGRAM:
+│ ░░░░░░░░░░ BUFFERING ZONE ░░░░░░░░░░ │██████ DISPLAY ZONE ██████│
+│ (faded, audio being collected)        │ (solid, already processed) │
+│◄────────── bufferSeconds ───────────►│◄────── history ──────────►│
+                                        ▲
+                                   SYNC POINT
+
+HEATMAP:
+│ ░░░░░░░░░░ PENDING ZONE ░░░░░░░░░░░░ │██████ CLASSIFIED ZONE ████│
+│ (faded, waiting for FLAM)             │ (solid, painted with scores)│
+│◄────────── bufferSeconds ───────────►│◄────── history ──────────►│
+                                        ▲
+                                   SYNC POINT (same x-position)
+```
+
+**Implementation Approach:**
+
+1. **Track buffer start position**: Record canvas x-position when audio buffering begins
+2. **Draw pending zone**: Both visualizations show a faded zone for the current buffer
+3. **Retroactive painting**: When classification completes, use `frame_scores` to paint the heatmap retroactively from buffer_start_x to current_x
+4. **Visual sync marker**: Optional subtle vertical line showing the classification boundary
+
+```tsx
+// Conceptual implementation
+const bufferStartXRef = useRef<number>(canvasWidth);
+const isBufferingRef = useRef<boolean>(false);
+
+// When buffer starts
+const onBufferStart = () => {
+  bufferStartXRef.current = currentCanvasX;
+  isBufferingRef.current = true;
+};
+
+// When classification completes
+const onClassificationComplete = (frameScores: Record<string, number[]>) => {
+  const startX = bufferStartXRef.current;
+  const endX = currentCanvasX;
+  const pixelWidth = endX - startX;
+
+  // Paint each frame to its corresponding pixel column
+  for (const [prompt, scores] of Object.entries(frameScores)) {
+    const row = prompts.indexOf(prompt);
+    scores.forEach((score, frameIdx) => {
+      const x = startX + (frameIdx / scores.length) * pixelWidth;
+      paintHeatmapColumn(x, row, score);
+    });
+  }
+
+  isBufferingRef.current = false;
+};
+
+// In draw loop - fade pending zone
+const drawPendingZone = (ctx: CanvasRenderingContext2D) => {
+  if (isBufferingRef.current) {
+    const pendingWidth = currentCanvasX - bufferStartXRef.current;
+    ctx.fillStyle = 'rgba(9, 13, 18, 0.5)';
+    ctx.fillRect(bufferStartXRef.current, 0, pendingWidth, canvas.height);
+  }
+};
+```
+
+### Comparison: Current vs Immersive Flow
+
+| Feature | Current | Immersive Flow |
+|---------|---------|----------------|
+| **Edge fade** | None | Left fade-in vignette |
+| **Label opacity** | Static | Dynamic (0.3-1.0) based on score |
+| **Label weight** | Static 400 | Dynamic (400-700) based on score |
+| **Label order** | Toggle (default off) | **Sorted by score ON by default** |
+| **Spectrogram/Heatmap sync** | Misaligned | Aligned at classification boundary |
+| **Pending zone** | None | Faded zone showing buffer collection |
+| **Retroactive paint** | None | Use `frame_scores` for frame-level detail |
+| **Overall feel** | Static dashboard | Flowing, alive, immersive |
+
+### Why This Layout Works
+
+1. **Visualization-first**: 80%+ of screen dedicated to spectrogram and heatmap
+2. **Information hierarchy**: High scores naturally draw attention (bold, bright)
+3. **Temporal clarity**: Sync point makes it clear what audio corresponds to what classification
+4. **Sense of flow**: Fade effects create a feeling of audio streaming through the interface
+5. **Reduced cognitive load**: Labels that matter are prominent; irrelevant ones fade away
+
+---
+
 ## Proposed Layout: "Mobile/Compact Mode"
 
 For narrow screens or embedded use.
