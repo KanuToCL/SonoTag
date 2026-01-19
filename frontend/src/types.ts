@@ -8,6 +8,14 @@ export interface ClassifyResponse {
   duration_s: number;
   sample_rate: number;
   device: string;
+  timing?: {
+    read_ms: number;
+    decode_ms: number;
+    tensor_ms: number;
+    audio_embed_ms: number;
+    similarity_ms: number;
+    total_ms: number;
+  };
 }
 
 export interface PromptsResponse {

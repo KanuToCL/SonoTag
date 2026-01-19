@@ -31,12 +31,20 @@ export async function getPrompts(): Promise<PromptsResponse> {
 
 /**
  * Classify audio using the FLAM model
+ * @param audioBlob - Audio file as Blob
+ * @param customPrompts - Optional array of custom prompts to use instead of defaults
  */
 export async function classifyAudio(
-  audioBlob: Blob
+  audioBlob: Blob,
+  customPrompts?: string[]
 ): Promise<ClassifyResponse> {
   const formData = new FormData();
   formData.append("audio", audioBlob, "audio.wav");
+
+  // If custom prompts provided, add as comma-separated string
+  if (customPrompts && customPrompts.length > 0) {
+    formData.append("prompts_csv", customPrompts.join(", "));
+  }
 
   const response = await fetch(`${API_BASE_URL}/classify`, {
     method: "POST",

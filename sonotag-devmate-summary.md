@@ -1,8 +1,10 @@
 # SonoTag / FLAM Browser - Developer Onboarding Guide
 
 > **Last Updated**: January 19, 2026
-> **Project Status**: Active Development (Pre-inference integration)
-> **Frontend**: TypeScript (migrated from JavaScript)
+> **Project Status**: Active Development - Live inference working ✅
+> **Version**: 0.3.0
+> **Frontend**: TypeScript (React + Vite)
+> **Backend**: Python (FastAPI + OpenFLAM)
 
 ---
 
@@ -10,14 +12,24 @@
 
 ### What is SonoTag/FLAM Browser?
 
-**FLAM Browser** is a modern, browser-first audio console for real-time microphone input analysis, frequency-range inspection, and live audio diagnostics. It's designed to integrate with **OpenFLAM** (Foundation Language-Audio Model) for continuous sound categorization.
+**FLAM Browser** is a modern, browser-first audio console for real-time microphone input analysis, frequency-range inspection, and live audio diagnostics. It integrates with **OpenFLAM** (Foundation Language-Audio Model) for **zero-shot sound event detection** using free-form text prompts.
+
+### What is FLAM?
+
+**FLAM** (Frame-Wise Language-Audio Modeling) is a cutting-edge language-audio model that supports:
+- **Zero-shot sound event detection**: Detect ANY sound without pre-training on specific categories
+- **Large-scale audio retrieval**: Find audio clips matching natural language descriptions
+- **Free-form text prompts**: You define what sounds to detect (e.g., "water dripping", "dog barking", "keyboard typing")
+
+**Key insight**: FLAM is NOT a fixed-class classifier. You provide text prompts, and FLAM returns similarity scores between the audio and each prompt. The prompts can be anything you describe!
 
 ### Problem Statement
 
 Users need a way to:
 - Capture and visualize live microphone audio in real-time
 - Analyze audio frequency spectrums with customizable ranges
-- Categorize sounds continuously using AI/ML inference (FLAM)
+- **Define custom sound categories** via free-form text prompts
+- Categorize sounds continuously using FLAM zero-shot inference
 - Get system recommendations for optimal buffer sizes based on hardware
 
 ### Key Features
@@ -30,7 +42,10 @@ Users need a way to:
 | Frequency Range Controls | ✅ Done | Adjustable min/max Hz display |
 | System Snapshot Panel | ✅ Done | Host specs (CPU, GPU, memory) |
 | Buffer Recommendation | ✅ Done | Heuristic-based buffer sizing |
-| FLAM Inference | 🔄 In Progress | Audio categorization via OpenFLAM |
+| FLAM Model Loading | ✅ Done | Model loads at backend startup |
+| `/classify` Endpoint | ✅ Done | Audio classification with custom prompts |
+| Custom Prompt Input | ✅ Done | User-defined text prompts in UI |
+| Live Audio → FLAM | 🔄 In Progress | Wire frontend to send audio chunks |
 | WebSocket Streaming | 📋 Planned | Low-latency audio chunk streaming |
 
 ### Technology Stack

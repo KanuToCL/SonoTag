@@ -12,7 +12,7 @@ import librosa
 import numpy as np
 import psutil
 import torch
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -347,6 +347,9 @@ def recommend_buffer(payload: RecommendRequest) -> RecommendResponse:
 # =============================================================================
 
 
+import time
+
+
 class ClassifyResponse(BaseModel):
     """Response from audio classification."""
 
@@ -355,6 +358,7 @@ class ClassifyResponse(BaseModel):
     duration_s: float
     sample_rate: int
     device: str
+    timing: dict[str, float] | None = None  # Timing breakdown in milliseconds
 
 
 class PromptsResponse(BaseModel):
@@ -387,21 +391,53 @@ def model_status() -> dict:
 @app.post("/classify", response_model=ClassifyResponse)
 async def classify_audio(
     audio: UploadFile = File(..., description="Audio file (WAV, MP3, etc.)"),
+    prompts_csv: Optional[str] = Form(
+        None, description="Comma-separated list of custom prompts"
+    ),
 ) -> ClassifyResponse:
     """
     Classify audio using FLAM model.
 
     Accepts audio files, resamples to 48kHz, and returns similarity scores
-    for each prompt in the default prompt list.
+    for each prompt. Optionally accepts custom prompts as comma-separated string.
+
+    Args:
+        audio: Audio file to classify
+        prompts_csv: Optional comma-separated list of custom prompts
+                     (e.g., "water drops, screaming, rain, music")
     """
     global flam_model, text_embeddings, device
 
     # Check if model is loaded
-    if flam_model is None or text_embeddings is None:
+    if flam_model is None:
         raise HTTPException(
             status_code=503,
             detail="FLAM model not loaded. Check server logs.",
         )
+
+    # Parse custom prompts or use defaults
+    if prompts_csv:
+        prompts = [p.strip() for p in prompts_csv.split(",") if p.strip()]
+        if not prompts:
+            prompts = DEFAULT_PROMPTS
+            current_text_embeddings = text_embeddings
+        else:
+            # Compute text embeddings for custom prompts on-the-fly
+            with torch.no_grad():
+                current_text_embeddings = flam_model.get_text_features(prompts)
+    else:
+        prompts = DEFAULT_PROMPTS
+        current_text_embeddings = text_embeddings
+
+    if current_text_embeddings is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Text embeddings not available. Check server logs.",
+        )
+
+    # Start timing
+    timing = {}
+    t_start = time.perf_counter()
 
     # Read audio file
     try:
@@ -413,6 +449,9 @@ async def classify_audio(
             detail=f"Failed to read audio file: {e}",
         )
 
+    t_after_read = time.perf_counter()
+    timing["read_ms"] = round((t_after_read - t_start) * 1000, 2)
+
     # Load and resample audio to 48kHz
     try:
         audio_array, sr = librosa.load(audio_buffer, sr=SAMPLE_RATE, mono=True)
@@ -421,6 +460,9 @@ async def classify_audio(
             status_code=400,
             detail=f"Failed to decode audio: {e}. Ensure file is a valid audio format.",
         )
+
+    t_after_decode = time.perf_counter()
+    timing["decode_ms"] = round((t_after_decode - t_after_read) * 1000, 2)
 
     # Limit duration
     max_samples = int(SAMPLE_RATE * MAX_DURATION_SECONDS)
@@ -432,18 +474,29 @@ async def classify_audio(
     # Convert to tensor
     audio_tensor = torch.tensor(audio_array).unsqueeze(0).to(device)
 
+    t_after_tensor = time.perf_counter()
+    timing["tensor_ms"] = round((t_after_tensor - t_after_decode) * 1000, 2)
+
     # Run inference
     try:
         with torch.no_grad():
+            t_before_audio = time.perf_counter()
             audio_features = flam_model.get_global_audio_features(audio_tensor)
+            t_after_audio = time.perf_counter()
+            timing["audio_embed_ms"] = round((t_after_audio - t_before_audio) * 1000, 2)
 
-            # Compute cosine similarity
-            similarities = (text_embeddings @ audio_features.T).squeeze(1)
+            # Compute cosine similarity using current text embeddings (custom or default)
+            similarities = (current_text_embeddings @ audio_features.T).squeeze(1)
+
+            t_after_similarity = time.perf_counter()
+            timing["similarity_ms"] = round(
+                (t_after_similarity - t_after_audio) * 1000, 2
+            )
 
             # Convert to Python floats
             scores = {
                 prompt: float(score)
-                for prompt, score in zip(DEFAULT_PROMPTS, similarities.cpu().numpy())
+                for prompt, score in zip(prompts, similarities.cpu().numpy())
             }
     except Exception as e:
         logger.error(f"Inference failed: {e}")
@@ -452,10 +505,14 @@ async def classify_audio(
             detail=f"Inference failed: {e}",
         )
 
+    t_end = time.perf_counter()
+    timing["total_ms"] = round((t_end - t_start) * 1000, 2)
+
     return ClassifyResponse(
         scores=scores,
-        prompts=DEFAULT_PROMPTS,
+        prompts=prompts,
         duration_s=round(duration_s, 3),
         sample_rate=SAMPLE_RATE,
         device=str(device),
+        timing=timing,
     )

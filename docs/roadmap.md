@@ -1,5 +1,7 @@
 # FLAM Browser App Roadmap
-- Current focus: integrate FLAM inference with streamed audio for live categorization.
+
+> **Last Updated**: January 19, 2026
+> **Current Phase**: Live inference wired ✅ → Optimization & Polish
 
 ## Product Vision
 Deliver a modern, browser-first audio console that lets users pick a microphone, validate live audio input, and continuously categorize sounds via FLAM with clear latency tradeoffs. The experience should feel seamless locally and in production, with an inference service that can scale independently of the UI.
@@ -36,69 +38,127 @@ Deliver a modern, browser-first audio console that lets users pick a microphone,
 - Use overlapping windows (e.g., 1-2s hop, 5-10s window) with smoothing.
 - Keep resampling server-side to 48kHz with an efficient resampler.
 
+---
+
 ## Status
-### Done
-- Frontend scaffold with mic selection, permission flow, mic level meter, and real-time spectrogram.
-- System check panel with browser system info and recommended buffer.
-- Backend scaffold (FastAPI) with `/health`, `/system-info`, and `/recommend-buffer`.
-- Local dev instructions in `docs/dev.md`.
-- Modern UI refresh with frequency range controls and spectrogram axis labels.
-- Backend system info expanded to report host CPU and memory.
-- Install scripts auto-clone OpenFLAM and can download model weights.
 
-### In Progress
-- Define FLAM inference workflow (prompt list, buffer size, output schema).
-- Run local OpenFLAM probe (`backend/scripts/flam_probe.py`) and log baseline latency.
+### ✅ Done (v0.3.0)
 
-### Next
-- Integrate FLAM model loading and `POST /classify` in the backend.
-- Add audio chunking and resampling to 48kHz in the backend.
-- Wire frontend to stream audio chunks to `/classify` and render category results.
-- Add real benchmark-based system identification for buffer recommendations.
-- Add display settings for confidence threshold and persistence (e.g., 70% for 10 chunks).
-- Add error states and UX polish for missing devices or blocked permissions.
+#### Backend
+- [x] FastAPI scaffold with `/health`, `/system-info`, `/recommend-buffer`
+- [x] FLAM model loading at startup via lifespan context manager
+- [x] `/classify` endpoint with audio upload and 48kHz resampling
+- [x] Custom prompts support via `prompts_csv` Form parameter
+- [x] `/model-status` endpoint to check if FLAM is ready
+- [x] `/prompts` endpoint to get default prompt list
+- [x] Timing breakdown in `/classify` response (read, decode, tensor, audio_embed, similarity, total)
+- [x] Text embeddings cached for default prompts (compute once at startup)
+
+#### Frontend
+- [x] React + Vite with TypeScript (migrated from JavaScript)
+- [x] Mic selection, permission flow, device enumeration
+- [x] Live level meter and real-time spectrogram
+- [x] Frequency range controls with Nyquist display
+- [x] System snapshot panel (CPU, memory, GPU, platform)
+- [x] FLAM prompts textarea with custom prompt input
+- [x] Audio buffer slider (1-10 seconds, controls update frequency)
+- [x] Scores panel showing all prompts with progress bars and numerical values
+- [x] Heatmap with real FLAM scores (scrolls with time)
+- [x] Timing breakdown display (shows backend processing times)
+- [x] Model status indicator and inference counter
+
+#### Documentation
+- [x] `sonotag-devmate-summary.md` - Comprehensive onboarding guide
+- [x] `docs/next-steps.md` - Task tracking and priorities
+- [x] `docs/flam_integration.md` - FLAM setup and API reference
+- [x] `docs/roadmap.md` - This file
+- [x] `CHANGELOG.md` - Version history
+
+#### Performance (M1 Pro CPU)
+- [x] FLAM audio embedding: ~94ms
+- [x] Backend total: ~95ms
+- [x] Frontend round-trip: ~280ms
+- [x] 1s buffer = ~1 update/second
+
+---
+
+### 🔄 In Progress
+
+- [ ] WebSocket streaming for lower latency (currently HTTP polling)
+- [ ] GPU acceleration testing (CUDA)
+- [ ] AudioWorklet migration (replace deprecated ScriptProcessorNode)
+
+---
+
+### 📋 Next Up
+
+#### Short-term (v0.4.0)
+- [ ] Add classification toggle (enable/disable live inference)
+- [ ] Add minimum confidence threshold slider
+- [ ] Add persistence window (only show if confident for N consecutive chunks)
+- [ ] Add local storage for user prompt presets
+- [ ] Add audio recording/playback for testing prompts
+
+#### Mid-term (v0.5.0)
+- [ ] WebSocket endpoint for streaming audio/results
+- [ ] Implement real benchmark-based buffer recommendations
+- [ ] Add export of classification results (CSV/JSON)
+- [ ] Desktop wrapper (Tauri/Electron) for local GPU access
+
+#### Long-term (v1.0.0)
+- [ ] WebGPU experimentation for client-side inference
+- [ ] ONNX export for cross-platform inference
+- [ ] Multi-user support with session management
+- [ ] Deploy to production (Vercel + GPU inference service)
+
+---
 
 ## Milestones
-1) Discovery and architecture
-- Review `openflam` API and model requirements (SR, window size, prompts).
-- Decide deployment split: browser UI + Python inference service.
-- Define audio chunking, latency target, and output schema.
 
-2) Inference service (local first)
-- Build a Python API that loads FLAM once per process.
-- Endpoint: `POST /classify` with audio chunk, returns category scores.
-- Add resampling to 48kHz and basic smoothing for stable output.
-- Add a system identification benchmark endpoint for recommendations.
+### ✅ Milestone 1: Discovery and Architecture (Complete)
+- [x] Review `openflam` API and model requirements (SR, window size, prompts)
+- [x] Decide deployment split: browser UI + Python inference service
+- [x] Define audio chunking, latency target, and output schema
 
-3) Browser client
-- Mic selection UI, mic level meter, and spectrogram.
-- Capture mic audio via Web Audio, chunk into windows, send to API.
-- Show live category confidence and recent history.
-- Add recommended buffer guidance with user override.
-- Add display rules: show only categories over threshold for a persistence window.
+### ✅ Milestone 2: Inference Service (Complete)
+- [x] Build a Python API that loads FLAM once per process
+- [x] Endpoint: `POST /classify` with audio chunk, returns category scores
+- [x] Add resampling to 48kHz and basic smoothing for stable output
+- [ ] Add a system identification benchmark endpoint for recommendations (partial)
 
-4) Local to Vercel parity
-- Use an `API_BASE_URL` env var for local vs deployed.
-- Add health checks and error states for permissions/no devices.
-- Ensure audio capture works on Chrome, Edge, and Safari.
+### ✅ Milestone 3: Browser Client (Complete)
+- [x] Mic selection UI, mic level meter, and spectrogram
+- [x] Capture mic audio via Web Audio, chunk into windows, send to API
+- [x] Show live category confidence and recent history
+- [x] Add recommended buffer guidance with user override
+- [ ] Add display rules: show only categories over threshold for a persistence window (next)
 
-5) Deployment
-- Deploy frontend to Vercel.
-- Deploy inference service to a GPU-capable host (or CPU if OK).
-- Configure CORS, auth (if needed), and rate limits.
+### 🔄 Milestone 4: Local to Vercel Parity (In Progress)
+- [x] Use an `API_BASE_URL` env var for local vs deployed
+- [x] Add health checks and error states for permissions/no devices
+- [ ] Ensure audio capture works on Chrome, Edge, and Safari (needs testing)
 
-6) Quality and monitoring
-- Add basic tests for audio pipeline and API responses.
-- Add telemetry for latency and inference errors.
-- Document setup and deployment steps.
+### 📋 Milestone 5: Deployment (Not Started)
+- [ ] Deploy frontend to Vercel
+- [ ] Deploy inference service to a GPU-capable host (or CPU if OK)
+- [ ] Configure CORS, auth (if needed), and rate limits
+
+### 📋 Milestone 6: Quality and Monitoring (Not Started)
+- [ ] Add basic tests for audio pipeline and API responses
+- [ ] Add telemetry for latency and inference errors
+- [ ] Document setup and deployment steps
+
+---
 
 ## Open Questions
 - Where will inference run in production (Vercel API, external service)?
-- Target category list: fixed taxonomy or free-form prompts?
-- Latency and batch size targets for real-time UX?
+- Target category list: fixed taxonomy or free-form prompts? → **Answered: Free-form prompts**
+- Latency and batch size targets for real-time UX? → **Answered: ~100ms inference, 1-5s buffer**
 - Expected concurrency and cost constraints?
 
+---
+
 ## Deliverables
-- `docs/roadmap.md` (this file).
-- Browser app with mic selection, mic level, spectrogram, and live categorization UI.
-- Inference service with documented API, model loading, and deployment scripts.
+- `docs/roadmap.md` (this file)
+- Browser app with mic selection, mic level, spectrogram, and live categorization UI
+- Inference service with documented API, model loading, and deployment scripts

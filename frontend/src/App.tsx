@@ -14,6 +14,7 @@ import type {
   ModelStatusResponse,
   Recommendation,
 } from "./types";
+import { classifyAudio, audioSamplesToWavBlob, resampleAudio, getModelStatus } from "./api";
 
 // =============================================================================
 // Types & Interfaces (local to this component)
@@ -29,25 +30,27 @@ type MonitoringStatus = "idle" | "running" | "stopped";
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
-// Buffer size for audio capture (in seconds)
-const AUDIO_BUFFER_SECONDS = 5;
+// Buffer size for audio capture (in seconds) - now configurable
+const DEFAULT_BUFFER_SECONDS = 5;
+const MIN_BUFFER_SECONDS = 1;
+const MAX_BUFFER_SECONDS = 10;
 // Target sample rate for FLAM
 const TARGET_SAMPLE_RATE = 48000;
-// Minimum interval between classification requests (ms)
-const CLASSIFY_INTERVAL_MS = 3000;
+// Minimum interval between classification requests (ms) - set to 0 to classify as fast as possible
+const CLASSIFY_INTERVAL_MS = 500; // Small cooldown to prevent overlapping requests
 
-// Default category bands (placeholder until FLAM prompts are loaded)
-const DEFAULT_CATEGORY_BANDS = [
+// Default prompts for FLAM classification
+const DEFAULT_PROMPTS = [
   "speech",
   "music",
-  "applause",
+  "water drops",
+  "screaming",
   "silence",
-  "car horn",
-  "engine running",
   "dog barking",
-  "glass breaking",
-  "gunshot",
-  "siren",
+  "keyboard typing",
+  "footsteps",
+  "door closing",
+  "rain",
 ];
 
 const HEAT_COLORS: HeatColorStop[] = [
@@ -131,20 +134,6 @@ const heatColor = (value: number): string => {
   return `rgb(${r}, ${g}, ${b})`;
 };
 
-const averageBand = (
-  freqData: Uint8Array,
-  startPct: number,
-  endPct: number
-): number => {
-  const start = Math.floor(startPct * freqData.length);
-  const end = Math.max(start + 1, Math.floor(endPct * freqData.length));
-  let sum = 0;
-  for (let i = start; i < end; i += 1) {
-    sum += freqData[i];
-  }
-  return sum / (end - start) / 255;
-};
-
 // =============================================================================
 // App Component
 // =============================================================================
@@ -173,10 +162,12 @@ function App() {
 
   // FLAM inference state
   const [modelStatus, setModelStatus] = useState<ModelStatusResponse | null>(null);
-  const [prompts, setPrompts] = useState<string[]>(DEFAULT_CATEGORY_BANDS);
+  const [prompts, setPrompts] = useState<string[]>(DEFAULT_PROMPTS);
+  const [promptInput, setPromptInput] = useState<string>(DEFAULT_PROMPTS.join(", "));
   const [classificationScores, setClassificationScores] = useState<Record<string, number>>({});
   const [isClassifying, setIsClassifying] = useState<boolean>(false);
   const [classifyError, setClassifyError] = useState<string>("");
+  const [bufferSeconds, setBufferSeconds] = useState<number>(DEFAULT_BUFFER_SECONDS);
 
   // ---------------------------------------------------------------------------
   // Refs
@@ -193,6 +184,22 @@ function App() {
   const audioBufferRef = useRef<Float32Array[]>([]);
   const lastClassifyTimeRef = useRef<number>(0);
   const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
+
+  // Ref to hold current classification scores for draw loop
+  const classificationScoresRef = useRef<Record<string, number>>({});
+  const promptsRef = useRef<string[]>(DEFAULT_PROMPTS);
+
+  // Inference timing
+  const [lastInferenceTime, setLastInferenceTime] = useState<number | null>(null);
+  const [inferenceCount, setInferenceCount] = useState<number>(0);
+  const [timingBreakdown, setTimingBreakdown] = useState<{
+    read_ms: number;
+    decode_ms: number;
+    tensor_ms: number;
+    audio_embed_ms: number;
+    similarity_ms: number;
+    total_ms: number;
+  } | null>(null);
 
   // ---------------------------------------------------------------------------
   // Derived Values
@@ -269,6 +276,77 @@ function App() {
       setError("Failed to enumerate audio devices.");
     }
   }, [selectedDeviceId]);
+
+  // ---------------------------------------------------------------------------
+  // Keep refs in sync with state for draw loop
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    classificationScoresRef.current = classificationScores;
+  }, [classificationScores]);
+
+  useEffect(() => {
+    promptsRef.current = prompts;
+  }, [prompts]);
+
+  // ---------------------------------------------------------------------------
+  // Classification Logic
+  // ---------------------------------------------------------------------------
+  const classifyCurrentBuffer = useCallback(async (): Promise<void> => {
+    if (isClassifying || audioBufferRef.current.length === 0) {
+      return;
+    }
+
+    // Check cooldown
+    const now = Date.now();
+    if (now - lastClassifyTimeRef.current < CLASSIFY_INTERVAL_MS) {
+      return;
+    }
+
+    setIsClassifying(true);
+    lastClassifyTimeRef.current = now;
+    const startTime = performance.now();
+
+    try {
+      // Concatenate all buffered samples
+      const totalLength = audioBufferRef.current.reduce((sum, arr) => sum + arr.length, 0);
+      const allSamples = new Float32Array(totalLength);
+      let offset = 0;
+      for (const chunk of audioBufferRef.current) {
+        allSamples.set(chunk, offset);
+        offset += chunk.length;
+      }
+
+      // Clear buffer for next window
+      audioBufferRef.current = [];
+
+      // Resample to 48kHz if needed
+      const currentSampleRate = audioContextRef.current?.sampleRate || 48000;
+      const resampledSamples = currentSampleRate !== TARGET_SAMPLE_RATE
+        ? resampleAudio(allSamples, currentSampleRate, TARGET_SAMPLE_RATE)
+        : allSamples;
+
+      // Convert to WAV blob
+      const wavBlob = audioSamplesToWavBlob(resampledSamples, TARGET_SAMPLE_RATE);
+
+      // Send to backend
+      const result = await classifyAudio(wavBlob, prompts);
+
+      // Update scores and timing
+      const elapsedMs = performance.now() - startTime;
+      setClassificationScores(result.scores);
+      setLastInferenceTime(elapsedMs);
+      setInferenceCount((prev) => prev + 1);
+      if (result.timing) {
+        setTimingBreakdown(result.timing);
+      }
+      setClassifyError("");
+    } catch (err) {
+      console.error("Classification failed:", err);
+      setClassifyError(err instanceof Error ? err.message : "Classification failed");
+    } finally {
+      setIsClassifying(false);
+    }
+  }, [isClassifying, prompts]);
 
   // ---------------------------------------------------------------------------
   // Audio Monitoring
@@ -351,6 +429,33 @@ function App() {
       const source = audioContext.createMediaStreamSource(stream);
       source.connect(analyser);
 
+      // Create ScriptProcessor for audio buffering (deprecated but widely supported)
+      const bufferSize = 4096;
+      const scriptProcessor = audioContext.createScriptProcessor(bufferSize, 1, 1);
+
+      // Calculate max buffer samples based on bufferSeconds (from state via ref)
+      const bufferSecondsRef = { current: bufferSeconds };
+      const maxBufferSamples = audioContext.sampleRate * bufferSecondsRef.current;
+      let currentBufferSamples = 0;
+
+      scriptProcessor.onaudioprocess = (event: AudioProcessingEvent): void => {
+        const inputData = event.inputBuffer.getChannelData(0);
+        const samples = new Float32Array(inputData);
+
+        audioBufferRef.current.push(samples);
+        currentBufferSamples += samples.length;
+
+        // When buffer is full, trigger classification
+        if (currentBufferSamples >= maxBufferSamples) {
+          currentBufferSamples = 0;
+          classifyCurrentBuffer();
+        }
+      };
+
+      source.connect(scriptProcessor);
+      scriptProcessor.connect(audioContext.destination);
+      scriptProcessorRef.current = scriptProcessor;
+
       const bufferLength = analyser.frequencyBinCount;
       const freqData = new Uint8Array(bufferLength);
       const timeData = new Uint8Array(analyser.fftSize);
@@ -420,10 +525,12 @@ function App() {
         }
 
         heatmapContext.drawImage(heatmapCanvas, -1, 0);
-        const rowHeight = heatmapCanvas.height / prompts.length;
-        prompts.forEach((prompt, row) => {
+        const currentPrompts = promptsRef.current;
+        const currentScores = classificationScoresRef.current;
+        const rowHeight = heatmapCanvas.height / currentPrompts.length;
+        currentPrompts.forEach((prompt, row) => {
           // Use classification scores if available, otherwise use placeholder
-          const score = classificationScores[prompt];
+          const score = currentScores[prompt];
           const value = score !== undefined ? (score + 1) / 2 : 0; // Normalize -1 to 1 range to 0 to 1
           heatmapContext.fillStyle = heatColor(value);
           heatmapContext.fillRect(
@@ -517,8 +624,22 @@ function App() {
       }
     };
 
+    const loadModelStatus = async (): Promise<void> => {
+      try {
+        const status = await getModelStatus();
+        if (!cancelled) {
+          setModelStatus(status);
+        }
+      } catch {
+        if (!cancelled) {
+          setModelStatus(null);
+        }
+      }
+    };
+
     loadBackendInfo();
     loadRecommendation();
+    loadModelStatus();
 
     return () => {
       cancelled = true;
@@ -573,6 +694,139 @@ function App() {
 
       <div className="layout">
         <aside className="panel controls">
+          <section className="block">
+            <h2>FLAM Prompts</h2>
+            <div className="stack">
+              <label className="label" htmlFor="prompt-input">
+                Sound categories to detect (comma-separated)
+              </label>
+              <textarea
+                id="prompt-input"
+                value={promptInput}
+                onChange={(e) => setPromptInput(e.target.value)}
+                rows={4}
+                placeholder="speech, music, water drops, screaming, ..."
+                style={{
+                  resize: "vertical",
+                  fontFamily: "inherit",
+                  fontSize: "0.875rem",
+                  padding: "0.5rem",
+                  borderRadius: "4px",
+                  border: "1px solid #444",
+                  background: "#1a1a1a",
+                  color: "#eee"
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const parsed = promptInput
+                    .split(",")
+                    .map((p) => p.trim())
+                    .filter((p) => p.length > 0);
+                  if (parsed.length > 0) {
+                    setPrompts(parsed);
+                    setClassificationScores({});
+                  }
+                }}
+              >
+                Update prompts
+              </button>
+              <p className="muted">
+                {prompts.length} active prompts
+              </p>
+              {classifyError && <p className="error">{classifyError}</p>}
+            </div>
+          </section>
+
+          <section className="block">
+            <h2>Inference Settings</h2>
+            <div className="stack">
+              <label className="label" htmlFor="buffer-slider">
+                Audio buffer: {bufferSeconds}s
+              </label>
+              <input
+                id="buffer-slider"
+                type="range"
+                min={MIN_BUFFER_SECONDS}
+                max={MAX_BUFFER_SECONDS}
+                step={1}
+                value={bufferSeconds}
+                onChange={(e) => setBufferSeconds(Number(e.target.value))}
+                style={{ width: "100%" }}
+              />
+              <div className="info-line" style={{ fontSize: "0.75rem" }}>
+                <span>{MIN_BUFFER_SECONDS}s (faster)</span>
+                <span>{MAX_BUFFER_SECONDS}s (more context)</span>
+              </div>
+
+              <div className="info-line" style={{ marginTop: "0.5rem" }}>
+                <span>Model status</span>
+                <span style={{ color: modelStatus?.loaded ? "#5ce3a2" : "#ff6b6b" }}>
+                  {modelStatus?.loaded ? `ready (${modelStatus.device})` : "loading..."}
+                </span>
+              </div>
+
+              {lastInferenceTime !== null && (
+                <div className="info-line">
+                  <span>Last inference</span>
+                  <span>{(lastInferenceTime / 1000).toFixed(2)}s</span>
+                </div>
+              )}
+
+              <div className="info-line">
+                <span>Inferences</span>
+                <span>{inferenceCount}</span>
+              </div>
+
+              {/* Timing breakdown */}
+              {timingBreakdown && (
+                <div style={{
+                  marginTop: "0.75rem",
+                  padding: "0.5rem",
+                  background: "rgba(0,0,0,0.3)",
+                  borderRadius: "4px",
+                  fontSize: "0.75rem"
+                }}>
+                  <div className="section-label" style={{ marginBottom: "0.25rem" }}>
+                    Timing Breakdown (backend)
+                  </div>
+                  <div className="info-line">
+                    <span>Read file</span>
+                    <span>{timingBreakdown.read_ms.toFixed(1)}ms</span>
+                  </div>
+                  <div className="info-line">
+                    <span>Decode/resample</span>
+                    <span>{timingBreakdown.decode_ms.toFixed(1)}ms</span>
+                  </div>
+                  <div className="info-line">
+                    <span>To tensor</span>
+                    <span>{timingBreakdown.tensor_ms.toFixed(1)}ms</span>
+                  </div>
+                  <div className="info-line">
+                    <span style={{ fontWeight: 600 }}>Audio embed (FLAM)</span>
+                    <span style={{ fontWeight: 600, color: "#ff7a3d" }}>
+                      {timingBreakdown.audio_embed_ms.toFixed(1)}ms
+                    </span>
+                  </div>
+                  <div className="info-line">
+                    <span>Similarity</span>
+                    <span>{timingBreakdown.similarity_ms.toFixed(1)}ms</span>
+                  </div>
+                  <div className="info-line" style={{ borderTop: "1px solid #333", paddingTop: "0.25rem", marginTop: "0.25rem" }}>
+                    <span style={{ fontWeight: 600 }}>Backend total</span>
+                    <span style={{ fontWeight: 600 }}>{timingBreakdown.total_ms.toFixed(1)}ms</span>
+                  </div>
+                </div>
+              )}
+
+              <p className="muted" style={{ marginTop: "0.5rem" }}>
+                Shorter buffer = faster updates but less context for FLAM.
+                Restart monitoring to apply buffer changes.
+              </p>
+            </div>
+          </section>
+
           <section className="block">
             <h2>Capture</h2>
             <div className="stack">
@@ -773,8 +1027,76 @@ function App() {
           <div className="figure">
             <div className="figure-header">
               <span className="figure-title">FLAM output</span>
-              <span className="figure-meta">energy proxy</span>
+              <span className="figure-meta">
+                {isClassifying ? "classifying..." : "live scores"}
+              </span>
             </div>
+
+            {/* Numerical scores display */}
+            <div className="scores-panel" style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+              gap: "0.5rem",
+              padding: "0.75rem",
+              background: "rgba(0,0,0,0.3)",
+              borderRadius: "6px",
+              marginBottom: "0.75rem",
+              fontSize: "0.8rem"
+            }}>
+              {prompts.map((prompt) => {
+                const score = classificationScores[prompt];
+                const hasScore = score !== undefined;
+                const normalizedScore = hasScore ? (score + 1) / 2 : 0;
+                const isTop = hasScore && score === Math.max(...Object.values(classificationScores));
+                return (
+                  <div
+                    key={prompt}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "0.25rem",
+                      padding: "0.5rem",
+                      background: isTop ? "rgba(255, 122, 61, 0.2)" : "rgba(255,255,255,0.05)",
+                      borderRadius: "4px",
+                      border: isTop ? "1px solid rgba(255, 122, 61, 0.5)" : "1px solid transparent"
+                    }}
+                  >
+                    <span style={{
+                      color: isTop ? "#ff7a3d" : "#aaa",
+                      fontWeight: isTop ? 600 : 400
+                    }}>
+                      {prompt}
+                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <div style={{
+                        flex: 1,
+                        height: "6px",
+                        background: "#1a1a1a",
+                        borderRadius: "3px",
+                        overflow: "hidden"
+                      }}>
+                        <div style={{
+                          width: `${normalizedScore * 100}%`,
+                          height: "100%",
+                          background: heatColor(normalizedScore),
+                          transition: "width 0.3s ease"
+                        }} />
+                      </div>
+                      <span style={{
+                        fontFamily: "monospace",
+                        fontSize: "0.75rem",
+                        color: hasScore ? "#fff" : "#555",
+                        minWidth: "3.5rem",
+                        textAlign: "right"
+                      }}>
+                        {hasScore ? (score > 0 ? "+" : "") + score.toFixed(3) : "---"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
             <div className="heatmap-wrap">
               <div className="heatmap-labels">
                 {prompts.map((prompt) => (
@@ -790,14 +1112,19 @@ function App() {
               <div className="heatmap-scale">
                 <div className="scale-gradient" />
                 <div className="scale-labels">
-                  <span>low</span>
-                  <span>high</span>
+                  <span>-1</span>
+                  <span>0</span>
+                  <span>+1</span>
                 </div>
               </div>
             </div>
             <p className="figure-note muted">
-              Placeholder mapping uses mic energy bands until FLAM inference is
-              wired.
+              {modelStatus?.loaded
+                ? `✅ FLAM ready on ${modelStatus.device}`
+                : "⏳ Waiting for FLAM model..."}
+              {" | "}Buffer: {bufferSeconds}s
+              {lastInferenceTime !== null && ` | Last: ${(lastInferenceTime / 1000).toFixed(2)}s`}
+              {inferenceCount > 0 && ` | #${inferenceCount}`}
             </p>
           </div>
         </section>
