@@ -78,6 +78,60 @@ const DEFAULT_PROMPTS = [
   "footsteps",
 ];
 
+// Action Movie prompts - sounds commonly found in action films
+const ACTION_MOVIE_PROMPTS = [
+  "explosion, blast",
+  "gun shot, gunfire",
+  "gun reloading, loading",
+  "automatic weapons, machine gun",
+  "punches, hitting, fighting",
+  "glass breaking, shatter",
+  "car chase, vehicle pursuit",
+  "car crash, collision",
+  "scream, screaming",
+  "man speaking, male voice",
+  "woman speaking, female voice",
+  "footsteps, running",
+  "helicopter, chopper",
+  "siren, police siren",
+  "tires screeching, skidding",
+  "engine revving, car engine",
+  "motorcycle, bike",
+  "fire, flames",
+  "wind, rushing air",
+  "dramatic music, orchestral music",
+  "silence, quiet",
+  "door slam, door",
+  "metal impact, clang",
+  "water splash, underwater",
+];
+
+// Sports prompts - sounds commonly found in sports broadcasts/content
+const SPORTS_PROMPTS = [
+  "crowd cheering, applause",
+  "crowd booing",
+  "whistle, referee whistle",
+  "ball bouncing",
+  "ball kick, kick",
+  "ball hit, bat hit",
+  "announcer, commentator",
+  "stadium ambience, crowd noise",
+  "horn, air horn",
+  "buzzer, game buzzer",
+  "running, footsteps",
+  "splash, swimming",
+  "ice skating, hockey",
+  "engine, racing",
+  "bicycle, cycling",
+  "tennis, racket hit",
+  "golf swing, golf",
+  "basketball, dribbling",
+  "boxing, punching",
+  "bell, ring bell",
+  "silence, pause",
+  "music, intro music",
+];
+
 // Music Decomposition prompts - comprehensive list of instruments and musical elements
 const MUSIC_DECOMPOSITION_PROMPTS = [
   // Strings
@@ -311,13 +365,16 @@ const [musicDecomposition, setMusicDecomposition] = useState<boolean>(false); //
   const [youtubeVideo, setYoutubeVideo] = useState<PrepareVideoResponse | null>(null);
   const [youtubeError, setYoutubeError] = useState<string>("");
 const [youtubeAnalyzing, setYoutubeAnalyzing] = useState<boolean>(false);
-  const [videoSampleRate, setVideoSampleRate] = useState<number>(48000);
 const videoRef = useRef<HTMLVideoElement>(null);
   const videoAudioContextRef = useRef<AudioContext | null>(null);
   const videoSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const videoScriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
   const videoAudioBufferRef = useRef<Float32Array[]>([]);
   const videoAnalyserRef = useRef<AnalyserNode | null>(null);
+
+  // Refs to access latest state values in closures (for ScriptProcessorNode callbacks)
+  const bufferSecondsRef = useRef<number>(DEFAULT_BUFFER_SECONDS);
+  const youtubeAnalyzingRef = useRef<boolean>(false);
 
   // ---------------------------------------------------------------------------
   // Refs
@@ -547,15 +604,30 @@ if (!youtubeAnalyzing || !heatmapRef.current || !spectrogramRef.current) return;
     promptsRef.current = prompts;
   }, [prompts]);
 
-  useEffect(() => {
+useEffect(() => {
     normalizeScoresRef.current = normalizeScores;
   }, [normalizeScores]);
+
+  // Keep bufferSecondsRef in sync with state
+  useEffect(() => {
+    bufferSecondsRef.current = bufferSeconds;
+  }, [bufferSeconds]);
+
+  // Keep youtubeAnalyzingRef in sync with state
+  useEffect(() => {
+    youtubeAnalyzingRef.current = youtubeAnalyzing;
+  }, [youtubeAnalyzing]);
 
 // ---------------------------------------------------------------------------
   // Classification Logic
   // ---------------------------------------------------------------------------
-  const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise<void> => {
-    if (isClassifying || videoAudioBufferRef.current.length === 0) {
+const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise<void> => {
+    // Don't classify if video is paused/stopped or buffer is empty
+    if (isClassifying || videoAudioBufferRef.current.length === 0 || !youtubeAnalyzingRef.current) {
+      // Clear buffer if not analyzing to prevent stale data
+      if (!youtubeAnalyzingRef.current) {
+        videoAudioBufferRef.current = [];
+      }
       return;
     }
 
@@ -1239,18 +1311,27 @@ if (!youtubeAnalyzing || !heatmapRef.current || !spectrogramRef.current) return;
                         scriptProcessor.connect(audioContext.destination);
                         source.connect(audioContext.destination); // Also play through speakers
 
-                        const maxBufferSamples = audioContext.sampleRate * bufferSeconds;
+const maxBufferSamples = audioContext.sampleRate * bufferSeconds;
+                        void maxBufferSamples; // Used in closure below via bufferSecondsRef
                         let currentBufferSamples = 0;
 
-                        scriptProcessor.onaudioprocess = (event) => {
+scriptProcessor.onaudioprocess = (event) => {
+                          // Only process audio if video is actually playing
+                          if (!youtubeAnalyzingRef.current) {
+                            return;
+                          }
+
                           const inputData = event.inputBuffer.getChannelData(0);
                           const samples = new Float32Array(inputData);
 
                           videoAudioBufferRef.current.push(samples);
                           currentBufferSamples += samples.length;
 
+                          // Use ref to get latest buffer duration (allows dynamic changes)
+                          const currentMaxSamples = audioContext.sampleRate * bufferSecondsRef.current;
+
                           // When buffer is full, trigger classification
-                          if (currentBufferSamples >= maxBufferSamples) {
+                          if (currentBufferSamples >= currentMaxSamples) {
                             currentBufferSamples = 0;
                             classifyVideoBuffer(audioContext.sampleRate);
                           }
@@ -1263,11 +1344,15 @@ if (!youtubeAnalyzing || !heatmapRef.current || !spectrogramRef.current) return;
                       }
                       setYoutubeAnalyzing(true);
                     }}
-                    onPause={() => {
+onPause={() => {
                       setYoutubeAnalyzing(false);
+                      // Clear any pending audio buffer to prevent stale classification
+                      videoAudioBufferRef.current = [];
                     }}
                     onEnded={() => {
                       setYoutubeAnalyzing(false);
+                      // Clear any pending audio buffer
+                      videoAudioBufferRef.current = [];
                     }}
                   />
                   <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
@@ -1435,7 +1520,7 @@ if (!youtubeAnalyzing || !heatmapRef.current || !spectrogramRef.current) return;
                 {prompts.length} active prompts. Use semicolons to separate; commas are allowed within prompts.
               </p>
 
-              {/* Music Decomposition Toggle - subtle, below prompts */}
+{/* Music Decomposition Toggle - subtle, below prompts */}
               <div style={{
                 display: "flex",
                 alignItems: "center",
@@ -1464,6 +1549,69 @@ if (!youtubeAnalyzing || !heatmapRef.current || !spectrogramRef.current) return;
                 <label htmlFor="music-decomposition-toggle" style={{ fontSize: "0.85rem", color: "#9aa7bd" }}>
                   Music Decomposition ({MUSIC_DECOMPOSITION_PROMPTS.length} instruments)
                 </label>
+              </div>
+
+              {/* Preset buttons for common use cases */}
+              <div style={{ marginTop: "0.75rem" }}>
+                <div className="section-label" style={{ marginBottom: "0.5rem" }}>Quick Presets</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => {
+                      setPrompts(ACTION_MOVIE_PROMPTS);
+                      setPromptInput(ACTION_MOVIE_PROMPTS.join("; "));
+                      setClassificationScores({});
+                      setMusicDecomposition(false);
+                      setScoresExpanded(false);
+                    }}
+                    style={{ fontSize: "0.75rem", padding: "0.4rem 0.75rem" }}
+                  >
+                    🎬 Action Movie ({ACTION_MOVIE_PROMPTS.length})
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => {
+                      setPrompts(SPORTS_PROMPTS);
+                      setPromptInput(SPORTS_PROMPTS.join("; "));
+                      setClassificationScores({});
+                      setMusicDecomposition(false);
+                      setScoresExpanded(false);
+                    }}
+                    style={{ fontSize: "0.75rem", padding: "0.4rem 0.75rem" }}
+                  >
+                    🏈 Sports ({SPORTS_PROMPTS.length})
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => {
+                      setPrompts(MUSIC_DECOMPOSITION_PROMPTS);
+                      setPromptInput(MUSIC_DECOMPOSITION_PROMPTS.join("; "));
+                      setClassificationScores({});
+                      setMusicDecomposition(true);
+                      setScoresExpanded(false);
+                    }}
+                    style={{ fontSize: "0.75rem", padding: "0.4rem 0.75rem" }}
+                  >
+                    🎵 Music ({MUSIC_DECOMPOSITION_PROMPTS.length})
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => {
+                      setPrompts(DEFAULT_PROMPTS);
+                      setPromptInput(DEFAULT_PROMPTS.join("; "));
+                      setClassificationScores({});
+                      setMusicDecomposition(false);
+                      setScoresExpanded(false);
+                    }}
+                    style={{ fontSize: "0.75rem", padding: "0.4rem 0.75rem" }}
+                  >
+                    🔄 Default ({DEFAULT_PROMPTS.length})
+                  </button>
+                </div>
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.5rem" }}>
