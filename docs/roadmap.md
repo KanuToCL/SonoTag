@@ -13,6 +13,25 @@ Deliver a modern, browser-first audio console that lets users analyze audio from
 - Deployable by default: the browser app is lightweight and stateless.
 - Desktop extension (mid-term): ship a downloadable wrapper (Tauri/Electron) that hosts the same UI but can access local GPU/CPU for high-performance inference.
 
+### Product Vision: Synchronized Visualizations
+A key UX goal is **temporal alignment between the spectrogram and heatmap**. Currently:
+- The spectrogram scrolls continuously, showing real-time audio frame-by-frame
+- The heatmap updates in "chunks" based on buffer duration (e.g., every 4 seconds)
+
+This creates a disconnect where 4 seconds of varied spectrogram data corresponds to a single solid color in the heatmap. The vision is:
+
+**Frame-wise Heatmap Painting**: Use FLAM's `frame_scores` (which we already receive from `get_local_similarity`) to paint the heatmap at frame-level granularity. When classification completes:
+1. Calculate how many pixels have scrolled since the buffer started
+2. Map each FLAM frame score to the corresponding heatmap column
+3. Paint the heatmap retroactively with per-frame colors
+
+This would make the heatmap "fill in" with detailed temporal resolution, showing exactly when each sound occurred within the analyzed segment. The result: both visualizations tell the same temporal story.
+
+**Alternative approaches under consideration:**
+- Sync markers: Vertical lines showing chunk boundaries on both displays
+- Overlapping windows: Slide the buffer by small increments (e.g., 0.5s hop, 4s window) for smoother updates
+- Interpolated display: Smooth transitions between chunk updates
+
 ## Goals
 - User opens app and sees audio permissions + device dropdown.
 - Default microphone is selected automatically; user can change it.
@@ -121,7 +140,12 @@ Deliver a modern, browser-first audio console that lets users analyze audio from
 
 ### 📋 Next Up
 
-#### Short-term (v0.4.0)
+#### Short-term (v0.4.1 - Visualization Sync)
+- [ ] **Frame-wise heatmap painting**: Use FLAM's `frame_scores` to paint heatmap retroactively with per-frame granularity, syncing with spectrogram
+- [ ] Track pixel offset during buffer capture to align frames with columns
+- [ ] Add optional sync markers (vertical lines) showing chunk boundaries
+
+#### Short-term (v0.5.0)
 - [ ] Add classification toggle (enable/disable live inference)
 - [ ] Add minimum confidence threshold slider
 - [ ] Add persistence window (only show if confident for N consecutive chunks)
