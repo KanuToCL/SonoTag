@@ -251,6 +251,34 @@ Returns per-frame detection scores for each prompt, properly calibrated using th
 - Visualization matching FLAM paper (heatmaps over time)
 - Precise detection boundaries
 
+### Loudness Relabel Postprocessing (Paper Section C.4)
+
+The FLAM paper describes a **temporal smoothing** algorithm to clean up noisy frame-wise predictions:
+
+**Problem**: Raw predictions have brief dropouts and glitches:
+```
+Frame:    1  2  3  4  5  6  7  8  9  10 11 12 13 14 15
+Raw:      ✓  ✓  ✓  ✗  ✓  ✓  ✓  ✓  ✓  ✗  ✗  ✓  ✗  ✗  ✗
+                   ↑                          ↑
+              short gap                  short spike
+```
+
+**Algorithm**:
+1. **Fill short gaps**: Negative segments <200ms (10 frames) between positives → mark positive
+2. **Remove short spikes**: Positive segments <40ms (2 frames) in long events → mark negative
+
+**Parameters** (from paper):
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| RMS window | 2400 samples | Window size at 48kHz |
+| Hop size | 1200 samples | 50Hz frame rate |
+| Min gap | 10 frames (200ms) | Gaps shorter than this get filled |
+| Min spike | 2 frames (40ms) | Spikes shorter than this get removed |
+
+**Result**: Cleaner event boundaries matching human perception.
+
+> **Note**: This postprocessing is not yet implemented in the backend. It's documented here for future reference.
+
 ---
 
 ## Step 5: Frontend Integration

@@ -75,7 +75,31 @@ curl -X POST http://localhost:8000/classify-local \
 
 ## 🎯 Immediate Priorities
 
-### 1. Backend Thread Pool (Concurrent Inference)
+### 1. Loudness Relabel Postprocessing (Paper Section C.4)
+**Status**: Planned
+**Effort**: 1-2 hours
+
+Implement temporal smoothing to clean up noisy frame-wise predictions:
+
+**Algorithm**:
+1. Fill short gaps: Negative segments <200ms between positives → mark positive
+2. Remove short spikes: Positive segments <40ms in long events → mark negative
+
+**Tasks**:
+- [ ] Add `postprocess_frame_scores()` function in backend
+- [ ] Add `postprocess: bool = True` parameter to `/classify-local`
+- [ ] Apply temporal smoothing to each prompt's frame scores
+- [ ] Return both raw and smoothed scores
+
+**Parameters** (from paper):
+- RMS window: 2400 samples (at 48kHz)
+- Hop size: 1200 samples (50Hz frame rate)
+- Min gap: 10 frames (200ms)
+- Min spike: 2 frames (40ms)
+
+---
+
+### 2. Backend Thread Pool (Concurrent Inference)
 **Status**: Planned
 **Effort**: 2-3 hours
 
