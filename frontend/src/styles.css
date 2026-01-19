@@ -172,7 +172,8 @@ body {
   border-radius: 12px;
   overflow: hidden;
   background: var(--canvas);
-  border: 1px solid rgba(34, 48, 69, 0.5);
+  border: none;
+  border-right: 1px solid rgba(34, 48, 69, 0.5);
   display: flex;
 }
 
@@ -190,6 +191,28 @@ body {
   );
   pointer-events: none;
   z-index: 10;
+}
+
+.spectrogram-section::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 10;
+  background:
+    linear-gradient(to left,
+      rgba(34, 48, 69, 0.5) 0%,
+      rgba(34, 48, 69, 0.3) 20%,
+      rgba(34, 48, 69, 0) 40%
+    ) top / 100% 1px no-repeat,
+    linear-gradient(to left,
+      rgba(34, 48, 69, 0.5) 0%,
+      rgba(34, 48, 69, 0.3) 20%,
+      rgba(34, 48, 69, 0) 40%
+    ) bottom / 100% 1px no-repeat;
 }
 
 .spectrogram-label {
@@ -211,7 +234,8 @@ body {
   border-radius: 12px;
   overflow: hidden;
   background: var(--canvas);
-  border: 1px solid rgba(34, 48, 69, 0.5);
+  border: none;
+  border-right: 1px solid rgba(34, 48, 69, 0.5);
   display: flex;
 }
 
@@ -229,6 +253,28 @@ body {
   );
   pointer-events: none;
   z-index: 10;
+}
+
+.heatmap-section::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 10;
+  background:
+    linear-gradient(to left,
+      rgba(34, 48, 69, 0.5) 0%,
+      rgba(34, 48, 69, 0.3) 20%,
+      rgba(34, 48, 69, 0) 40%
+    ) top / 100% 1px no-repeat,
+    linear-gradient(to left,
+      rgba(34, 48, 69, 0.5) 0%,
+      rgba(34, 48, 69, 0.3) 20%,
+      rgba(34, 48, 69, 0) 40%
+    ) bottom / 100% 1px no-repeat;
 }
 
 .heatmap-canvas-wrap {
@@ -460,6 +506,46 @@ body {
   height: 6px;
   border-radius: 50%;
   background: currentColor;
+}
+
+/* Floating Video Modal - Immersive mode */
+.floating-video-modal {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.floating-video-modal:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.floating-video-modal video {
+  border: none;
+  outline: none;
+}
+
+.floating-video-modal video::-webkit-media-controls {
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+}
+
+.modal-drag-handle:active {
+  cursor: grabbing;
+}
+
+/* Collapsible Section Header */
+.collapsible-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+}
+
+.collapsible-header:hover h2 {
+  color: var(--text);
 }
 
 /* Settings Slide-Out Panel */
