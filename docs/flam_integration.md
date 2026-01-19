@@ -212,7 +212,7 @@ Classify audio against prompts (global similarity):
 
 ### POST /classify-local
 
-Classify audio using frame-wise local similarity (Eq. 7 from FLAM paper).
+Classify audio using FLAM's frame-wise local similarity (Eq. 7 from FLAM paper).
 Returns per-frame detection scores for each prompt, properly calibrated using the learned per-text logit bias.
 
 **Parameters**:
@@ -250,6 +250,33 @@ Returns per-frame detection scores for each prompt, properly calibrated using th
 - Temporal sound event localization (when did the dog bark?)
 - Visualization matching FLAM paper (heatmaps over time)
 - Precise detection boundaries
+
+### Robust Classifier Theory (Paper Section C.3)
+
+The `method` parameter controls how FLAM calibrates predictions to handle **label imbalance** in training data.
+
+**The Problem**: Training data has unequal representation:
+- "Barking" might appear in 2% of positive frames
+- "Meowing" might appear in 15% of positive frames
+
+A naive classifier would be biased toward common sounds.
+
+**The Solution**: Equation 22 from the paper defines a calibrated score:
+```
+s(x,l,y) = p(z=1|x,l,y) / (p(z=1|x,l,y) + p(z=1|y))
+                ↑                           ↑
+         raw prediction            learned bias β*(y)
+```
+
+This divides out the per-prompt bias learned during training, giving all prompts a unified decision boundary of 0.5.
+
+**Method Comparison**:
+| Method | Description | Speed | Accuracy |
+|--------|-------------|-------|----------|
+| `unbiased` | Full Eq. 7 with logit bias correction | Baseline | Best |
+| `approximate` | Simplified Eq. 8 (assumes β* ≈ -8) | ~Same | Negligible difference |
+
+In practice, β* ≈ -8, so the approximation is nearly identical to the full formula.
 
 ### Loudness Relabel Postprocessing (Paper Section C.4)
 
