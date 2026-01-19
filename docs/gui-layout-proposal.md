@@ -198,18 +198,18 @@ For narrow screens or embedded use.
 ### 2. Visualization Stack
 ```tsx
 <div className="viz-stack">
-  <SpectrogramCanvas 
+  <SpectrogramCanvas
     freqRange={freqRange}
     slideSpeed={slideSpeed}
   />
-  <HeatmapCanvas 
+  <HeatmapCanvas
     prompts={prompts}
     scores={classificationScores}
     frameScores={frameScores}
     smoothedScores={smoothedFrameScores}
     showSmoothed={postprocess}
   />
-  <LiveScoresPanel 
+  <LiveScoresPanel
     prompts={prompts}
     scores={classificationScores}
     normalized={normalizeScores}
@@ -220,22 +220,22 @@ For narrow screens or embedded use.
 ### 3. Quick Controls (Bottom Bar)
 ```tsx
 <div className="quick-controls">
-  <MicSelector 
+  <MicSelector
     devices={devices}
     selected={selectedDeviceId}
     onSelect={setSelectedDeviceId}
   />
-  <BufferSlider 
+  <BufferSlider
     value={bufferSeconds}
     min={1} max={10}
     onChange={setBufferSeconds}
   />
-  <SpeedSlider 
+  <SpeedSlider
     value={slideSpeed}
     min={1} max={5}
     onChange={setSlideSpeed}
   />
-  <StatusIndicator 
+  <StatusIndicator
     modelStatus={modelStatus}
     inferenceTime={lastInferenceTime}
     inferenceCount={inferenceCount}
@@ -251,19 +251,19 @@ For narrow screens or embedded use.
     <PromptPresets onSelect={loadPreset} />
     <Button onClick={updatePrompts}>Update</Button>
   </Section>
-  
+
   <Section title="Detection Mode">
-    <RadioGroup 
+    <RadioGroup
       options={["Clamped (paper)", "Relative (normalized)"]}
       value={normalizeScores ? "relative" : "clamped"}
       onChange={...}
     />
-    <Checkbox 
+    <Checkbox
       label="Loudness Relabel Postprocessing"
       checked={postprocess}
       onChange={setPostprocess}
     />
-    <Slider 
+    <Slider
       label="Threshold"
       value={threshold}
       min={0} max={1} step={0.05}
@@ -271,17 +271,17 @@ For narrow screens or embedded use.
       disabled={!postprocess}
     />
   </Section>
-  
+
   <Section title="Frequency Range">
-    <FreqRangeInputs 
+    <FreqRangeInputs
       min={freqMin} max={freqMax}
       nyquist={nyquist}
       onChange={...}
     />
   </Section>
-  
+
   <Section title="System Info" collapsible>
-    <SystemInfoPanel 
+    <SystemInfoPanel
       backendInfo={backendInfo}
       browserInfo={browserInfo}
       recommendation={recommendation}
@@ -302,24 +302,24 @@ const PROMPT_PRESETS = {
     "speech", "music", "silence", "noise"
   ],
   "Voice Detection": [
-    "speech", "male speech, man speaking", 
-    "female speech, woman speaking", 
+    "speech", "male speech, man speaking",
+    "female speech, woman speaking",
     "child speech, kid speaking", "singing"
   ],
   "Pet Sounds": [
-    "dog barking", "cat meowing", "bird chirping", 
+    "dog barking", "cat meowing", "bird chirping",
     "animal sounds"
   ],
   "Environment": [
-    "traffic noise", "rain", "wind", 
+    "traffic noise", "rain", "wind",
     "construction", "crowd noise"
   ],
   "Security": [
-    "glass breaking", "gunshot", "screaming", 
+    "glass breaking", "gunshot", "screaming",
     "alarm", "siren"
   ],
   "Music Analysis": [
-    "music", "drums", "guitar", "piano", 
+    "music", "drums", "guitar", "piano",
     "vocals", "bass"
   ]
 };

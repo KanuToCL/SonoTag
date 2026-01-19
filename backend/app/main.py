@@ -825,8 +825,12 @@ async def classify_audio_local(
             for i, prompt in enumerate(prompt_list):
                 scores_per_frame = local_sim_np[i].tolist()
                 frame_scores[prompt] = [round(s, 4) for s in scores_per_frame]
-                # Global score: max across frames (most confident detection)
-                global_scores[prompt] = round(float(np.max(local_sim_np[i])), 4)
+
+                # Global score: use MEAN across frames instead of MAX
+                # MAX was inflating scores because any single high frame dominates
+                # MEAN gives a more balanced view of overall detection confidence
+                mean_score = float(np.mean(local_sim_np[i]))
+                global_scores[prompt] = round(mean_score, 4)
 
             # Calculate frame duration (10s / num_frames)
             frame_duration_s = 10.0 / num_frames
