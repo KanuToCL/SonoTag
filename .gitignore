@@ -2,5 +2,8 @@ backend/.venv/
 frontend/node_modules/
 frontend/dist/
 openflam/
+.python-version
+__pycache__/
+*.pyc
 .env
 .DS_Store
