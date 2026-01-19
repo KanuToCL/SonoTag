@@ -1158,13 +1158,15 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                 fontWeight: inputMode === "youtube" ? 600 : 400
               }}
             >
-              YouTube
+            YouTube
             </button>
             <button
               type="button"
               onClick={() => {
                 setInputMode("microphone");
-                // Cleanup YouTube if loaded
+                // Stop YouTube analysis and cleanup
+                setYoutubeAnalyzing(false);
+                videoAudioBufferRef.current = [];
                 if (youtubeVideo) {
                   cleanupVideo(youtubeVideo.video_id);
                   setYoutubeVideo(null);
@@ -1175,6 +1177,10 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                   if (videoSourceRef.current) {
                     videoSourceRef.current.disconnect();
                     videoSourceRef.current = null;
+                  }
+                  if (videoAnalyserRef.current) {
+                    videoAnalyserRef.current.disconnect();
+                    videoAnalyserRef.current = null;
                   }
                   if (videoAudioContextRef.current) {
                     videoAudioContextRef.current.close();
