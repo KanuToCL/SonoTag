@@ -364,6 +364,22 @@ class ClassifyResponse(BaseModel):
     timing: dict[str, float] | None = None  # Timing breakdown in milliseconds
 
 
+class ClassifyLocalResponse(BaseModel):
+    """Response from frame-wise audio classification using unbiased local similarity."""
+
+    # Frame-wise scores: dict mapping prompt -> list of scores per frame
+    frame_scores: dict[str, list[float]]
+    # Aggregated global scores (max across frames)
+    global_scores: dict[str, float]
+    prompts: list[str]
+    num_frames: int
+    frame_duration_s: float  # Duration of each frame in seconds
+    duration_s: float
+    sample_rate: int
+    device: str
+    timing: dict[str, float] | None = None
+
+
 class PromptsResponse(BaseModel):
     """Available prompts for classification."""
 
@@ -547,6 +563,165 @@ async def classify_audio(
     return ClassifyResponse(
         scores=scores,
         prompts=prompt_list,
+        duration_s=round(duration_s, 3),
+        sample_rate=SAMPLE_RATE,
+        device=str(device),
+        timing=timing,
+    )
+
+
+@app.post("/classify-local", response_model=ClassifyLocalResponse)
+async def classify_audio_local(
+    audio: UploadFile = File(..., description="Audio file (WAV, MP3, etc.)"),
+    prompts: Optional[str] = Form(
+        None,
+        description="Semicolon-separated list of custom prompts. "
+        "Use semicolons to allow commas within prompts.",
+    ),
+    method: str = Form(
+        "unbiased",
+        description="Method for computing local similarity: 'unbiased' (Eq. 7) or 'approximate' (Eq. 8)",
+    ),
+) -> ClassifyLocalResponse:
+    """
+    Classify audio using FLAM's frame-wise local similarity (Eq. 7 from paper).
+
+    Returns per-frame detection scores for each prompt, properly calibrated using
+    the learned per-text logit bias. This matches the paper's visualization.
+
+    Frame duration: ~0.5 seconds per frame (for 10s audio = ~20 frames)
+
+    Args:
+        audio: Audio file to classify
+        prompts: Optional semicolon-separated list of custom prompts
+        method: 'unbiased' (default, uses logit bias correction) or 'approximate'
+    """
+    global flam_model, device
+
+    # Check if model is loaded
+    if flam_model is None:
+        raise HTTPException(
+            status_code=503,
+            detail="FLAM model not loaded. Check server logs.",
+        )
+
+    # Parse custom prompts or use defaults
+    if prompts:
+        prompt_list = [p.strip() for p in prompts.split(";") if p.strip()]
+        if not prompt_list:
+            prompt_list = DEFAULT_PROMPTS
+    else:
+        prompt_list = DEFAULT_PROMPTS
+
+    # Start timing
+    timing = {}
+    t_start = time.perf_counter()
+
+    # Read audio file
+    try:
+        audio_bytes = await audio.read()
+        audio_buffer = io.BytesIO(audio_bytes)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to read audio file: {e}",
+        )
+
+    t_after_read = time.perf_counter()
+    timing["read_ms"] = round((t_after_read - t_start) * 1000, 2)
+
+    # Load and resample audio to 48kHz
+    try:
+        audio_array, sr = librosa.load(audio_buffer, sr=SAMPLE_RATE, mono=True)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to decode audio: {e}. Ensure file is a valid audio format.",
+        )
+
+    t_after_decode = time.perf_counter()
+    timing["decode_ms"] = round((t_after_decode - t_after_read) * 1000, 2)
+
+    # Limit duration
+    max_samples = int(SAMPLE_RATE * MAX_DURATION_SECONDS)
+    if len(audio_array) > max_samples:
+        audio_array = audio_array[:max_samples]
+
+    duration_s = len(audio_array) / SAMPLE_RATE
+
+    # CRITICAL: FLAM expects exactly 480,000 samples (10 seconds at 48kHz)
+    # Tile the audio to fill the 10-second window
+    original_len = len(audio_array)
+    if len(audio_array) < EXPECTED_SAMPLES:
+        repeats_needed = int(np.ceil(EXPECTED_SAMPLES / len(audio_array)))
+        audio_array = np.tile(audio_array, repeats_needed)[:EXPECTED_SAMPLES]
+        logger.info(
+            f"Tiled audio from {original_len} to {EXPECTED_SAMPLES} samples "
+            f"({original_len / SAMPLE_RATE:.2f}s repeated to fill 10.00s)"
+        )
+
+    # Convert to tensor
+    audio_tensor = torch.tensor(audio_array).unsqueeze(0).to(device)
+
+    t_after_tensor = time.perf_counter()
+    timing["tensor_ms"] = round((t_after_tensor - t_after_decode) * 1000, 2)
+
+    # Run inference using get_local_similarity with cross_product=True
+    try:
+        with torch.no_grad():
+            t_before_inference = time.perf_counter()
+
+            # get_local_similarity with cross_product=True returns (batch, num_text, T)
+            # where T is the number of time frames
+            local_similarity = flam_model.get_local_similarity(
+                audio=audio_tensor,
+                text=prompt_list,
+                method=method,
+                cross_product=True,
+            )
+
+            t_after_inference = time.perf_counter()
+            timing["local_similarity_ms"] = round(
+                (t_after_inference - t_before_inference) * 1000, 2
+            )
+
+            # local_similarity shape: (1, num_prompts, num_frames)
+            # Squeeze batch dimension
+            local_sim_np = (
+                local_similarity.squeeze(0).cpu().numpy()
+            )  # (num_prompts, num_frames)
+
+            num_frames = local_sim_np.shape[1]
+
+            # Build frame_scores dict: prompt -> list of scores per frame
+            frame_scores = {}
+            global_scores = {}
+
+            for i, prompt in enumerate(prompt_list):
+                scores_per_frame = local_sim_np[i].tolist()
+                frame_scores[prompt] = [round(s, 4) for s in scores_per_frame]
+                # Global score: max across frames (most confident detection)
+                global_scores[prompt] = round(float(np.max(local_sim_np[i])), 4)
+
+            # Calculate frame duration (10s / num_frames)
+            frame_duration_s = 10.0 / num_frames
+
+    except Exception as e:
+        logger.error(f"Local inference failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Local inference failed: {e}",
+        )
+
+    t_end = time.perf_counter()
+    timing["total_ms"] = round((t_end - t_start) * 1000, 2)
+
+    return ClassifyLocalResponse(
+        frame_scores=frame_scores,
+        global_scores=global_scores,
+        prompts=prompt_list,
+        num_frames=num_frames,
+        frame_duration_s=round(frame_duration_s, 4),
         duration_s=round(duration_s, 3),
         sample_rate=SAMPLE_RATE,
         device=str(device),

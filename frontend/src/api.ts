@@ -1,5 +1,6 @@
 import type {
   ClassifyResponse,
+  ClassifyLocalResponse,
   ModelStatusResponse,
   PromptsResponse,
 } from "./types";
@@ -112,6 +113,45 @@ export function audioSamplesToWavBlob(
   }
 
   return new Blob([buffer], { type: "audio/wav" });
+}
+
+/**
+ * Classify audio using FLAM's frame-wise local similarity (Eq. 7 from paper).
+ * Returns per-frame detection scores for each prompt, properly calibrated using
+ * the learned per-text logit bias.
+ *
+ * @param audioBlob - Audio file as Blob
+ * @param customPrompts - Optional array of custom prompts to use instead of defaults
+ * @param method - 'unbiased' (default, uses logit bias correction) or 'approximate'
+ */
+export async function classifyAudioLocal(
+  audioBlob: Blob,
+  customPrompts?: string[],
+  method: "unbiased" | "approximate" = "unbiased"
+): Promise<ClassifyLocalResponse> {
+  const formData = new FormData();
+  formData.append("audio", audioBlob, "audio.wav");
+
+  // If custom prompts provided, add as semicolon-separated string
+  if (customPrompts && customPrompts.length > 0) {
+    formData.append("prompts", customPrompts.join("; "));
+  }
+
+  formData.append("method", method);
+
+  const response = await fetch(`${API_BASE_URL}/classify-local`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(
+      error.detail || `Local classification failed: ${response.statusText}`
+    );
+  }
+
+  return response.json();
 }
 
 /**

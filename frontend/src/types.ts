@@ -18,6 +18,30 @@ export interface ClassifyResponse {
   };
 }
 
+/**
+ * Response from frame-wise audio classification using unbiased local similarity.
+ * This matches the FLAM paper's Eq. 7 visualization.
+ */
+export interface ClassifyLocalResponse {
+  // Frame-wise scores: dict mapping prompt -> list of scores per frame
+  frame_scores: Record<string, number[]>;
+  // Aggregated global scores (max across frames)
+  global_scores: Record<string, number>;
+  prompts: string[];
+  num_frames: number;
+  frame_duration_s: number; // Duration of each frame in seconds (~0.5s)
+  duration_s: number;
+  sample_rate: number;
+  device: string;
+  timing?: {
+    read_ms: number;
+    decode_ms: number;
+    tensor_ms: number;
+    local_similarity_ms: number;
+    total_ms: number;
+  };
+}
+
 export interface PromptsResponse {
   prompts: string[];
   count: number;

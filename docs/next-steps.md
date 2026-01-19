@@ -1,7 +1,7 @@
 # SonoTag - Next Steps
 
 > **Last Updated**: January 19, 2026
-> **Current Phase**: Live inference complete, optimizations planned
+> **Current Phase**: Live inference with frame-wise detection, optimizations planned
 
 ---
 
@@ -12,6 +12,7 @@
 - [x] Test probe script with audio files
 - [x] Add model loading at startup (lifespan context manager)
 - [x] Add `/classify` endpoint with audio upload
+- [x] Add `/classify-local` endpoint with frame-wise detection (Eq. 7)
 - [x] Add resampling to 48kHz (FLAM requirement)
 - [x] Cache text embeddings for default prompts
 - [x] Return similarity scores as JSON
@@ -29,8 +30,9 @@
 - [x] Capture audio samples using ScriptProcessorNode
 - [x] Buffer samples for configurable duration (1-10 seconds slider)
 - [x] Convert Float32Array to WAV blob
-- [x] Send to `/classify` with current prompts
-- [x] Update `classificationScores` state with response
+- [x] Send to `/classify-local` with current prompts
+- [x] Update `classificationScores` state with global_scores
+- [x] Store `frameScores` for frame-wise temporal data
 - [x] Display real FLAM scores in heatmap
 - [x] Scores panel with progress bars and raw scores
 - [x] Model status indicator
@@ -44,19 +46,29 @@
 - [x] Clamped mode (matches paper): negative→0, positive→value
 - [x] Relative mode (min-max normalization): worst=0, best=1
 - [x] Scale inverted: 1 (bright) at top, 0 (dark) at bottom
-- [x] Sliding speed control for spectrogram and heatmap (1-5 px/frame)
+- [x] Sliding speed control for spectrogram and heatmap (frame skipping)
+
+### Unbiased Local Similarity (Eq. 7)
+- [x] Backend `/classify-local` endpoint with `get_local_similarity(method="unbiased")`
+- [x] Returns frame-wise scores (~20 frames per 10s audio, ~0.5s per frame)
+- [x] Returns global_scores (max across frames) for display
+- [x] Frontend API function `classifyAudioLocal()` in api.ts
+- [x] Frontend types `ClassifyLocalResponse` in types.ts
+- [x] App.tsx updated to call `/classify-local` endpoint
 
 ### Verified End-to-End
 ```bash
-# Test with custom prompts (semicolon-separated, compound prompts):
-curl -X POST http://localhost:8000/classify \
+# Test frame-wise detection with custom prompts:
+curl -X POST http://localhost:8000/classify-local \
   -F "audio=@openflam/test/test_data/test_example.wav" \
-  -F "prompts=water drops; water dripping; screaming; male speech, man speaking"
+  -F "prompts=water drops; water dripping; screaming" \
+  -F "method=unbiased"
 
-# Results:
-# water dripping: +0.0272 👆 TOP MATCH
-# screaming:      +0.0244
-# water drops:    +0.0072
+# Response includes:
+# - frame_scores: per-frame detection (20 frames × 0.5s each)
+# - global_scores: max across frames for each prompt
+# - num_frames: number of temporal frames
+# - frame_duration_s: ~0.5s per frame
 ```
 
 ---

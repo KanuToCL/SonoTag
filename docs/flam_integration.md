@@ -191,7 +191,7 @@ Response:
 
 ### POST /classify
 
-Classify audio against prompts:
+Classify audio against prompts (global similarity):
 
 **Parameters**:
 | Name | Type | Required | Description |
@@ -209,6 +209,47 @@ Classify audio against prompts:
     "device": "cpu"
 }
 ```
+
+### POST /classify-local
+
+Classify audio using frame-wise local similarity (Eq. 7 from FLAM paper).
+Returns per-frame detection scores for each prompt, properly calibrated using the learned per-text logit bias.
+
+**Parameters**:
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `audio` | File | Yes | Audio file (WAV, MP3, FLAC, etc.) |
+| `prompts` | String | No | **Semicolon-separated** custom prompts |
+| `method` | String | No | `unbiased` (default, Eq. 7) or `approximate` (Eq. 8) |
+
+**Response**:
+```json
+{
+    "frame_scores": {
+        "speech": [0.1, 0.2, 0.8, 0.9, ...],
+        "music": [0.3, 0.1, 0.05, 0.1, ...]
+    },
+    "global_scores": {"speech": 0.9, "music": 0.3},
+    "prompts": ["speech", "music"],
+    "num_frames": 20,
+    "frame_duration_s": 0.5,
+    "duration_s": 10.0,
+    "sample_rate": 48000,
+    "device": "cpu",
+    "timing": {
+        "read_ms": 1.2,
+        "decode_ms": 150.3,
+        "tensor_ms": 0.8,
+        "local_similarity_ms": 1200.5,
+        "total_ms": 1355.0
+    }
+}
+```
+
+**Use Cases**:
+- Temporal sound event localization (when did the dog bark?)
+- Visualization matching FLAM paper (heatmaps over time)
+- Precise detection boundaries
 
 ---
 

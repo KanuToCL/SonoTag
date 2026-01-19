@@ -14,7 +14,12 @@ import type {
   ModelStatusResponse,
   Recommendation,
 } from "./types";
-import { classifyAudio, audioSamplesToWavBlob, resampleAudio, getModelStatus } from "./api";
+import {
+  classifyAudioLocal,
+  audioSamplesToWavBlob,
+  resampleAudio,
+  getModelStatus,
+} from "./api";
 
 // =============================================================================
 // Types & Interfaces (local to this component)
@@ -39,10 +44,19 @@ const TARGET_SAMPLE_RATE = 48000;
 // Minimum interval between classification requests (ms) - set to 0 to classify as fast as possible
 const CLASSIFY_INTERVAL_MS = 500; // Small cooldown to prevent overlapping requests
 
-// Sliding speed control (pixels per frame)
+// Sliding speed control (1=slowest/every 6th frame, 5=fastest/every frame)
+// Lower values skip more frames for slower scrolling
 const DEFAULT_SLIDE_SPEED = 1;
 const MIN_SLIDE_SPEED = 1;
 const MAX_SLIDE_SPEED = 5;
+// Frame skip map: speed 1 = draw every 6 frames, speed 5 = every frame
+const FRAME_SKIP_MAP: Record<number, number> = {
+  1: 6,  // Very slow - update every 6th frame (~10fps)
+  2: 4,  // Slow - update every 4th frame (~15fps)
+  3: 2,  // Medium - update every 2nd frame (~30fps)
+  4: 1,  // Fast - every frame (~60fps)
+  5: 1,  // Fastest - every frame with 2px shift
+};
 
 // Default prompts for FLAM classification
 // Compound prompts (with commas) are supported to describe sounds multiple ways
@@ -217,6 +231,7 @@ function App() {
   const [prompts, setPrompts] = useState<string[]>(DEFAULT_PROMPTS);
   const [promptInput, setPromptInput] = useState<string>(DEFAULT_PROMPTS.join("; "));
   const [classificationScores, setClassificationScores] = useState<Record<string, number>>({});
+  const [frameScores, setFrameScores] = useState<Record<string, number[]>>({}); // Frame-wise scores from local similarity
   const [isClassifying, setIsClassifying] = useState<boolean>(false);
   const [classifyError, setClassifyError] = useState<string>("");
   const [bufferSeconds, setBufferSeconds] = useState<number>(DEFAULT_BUFFER_SECONDS);
@@ -238,9 +253,11 @@ function App() {
   const audioBufferRef = useRef<Float32Array[]>([]);
   const lastClassifyTimeRef = useRef<number>(0);
   const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const frameCounterRef = useRef<number>(0); // For frame skipping to control slide speed
 
   // Ref to hold current classification scores for draw loop
   const classificationScoresRef = useRef<Record<string, number>>({});
+  const frameScoresRef = useRef<Record<string, number[]>>({}); // Frame-wise scores for temporal heatmap
   const promptsRef = useRef<string[]>(DEFAULT_PROMPTS);
   const normalizeScoresRef = useRef<boolean>(false);
 
@@ -339,6 +356,10 @@ function App() {
   }, [classificationScores]);
 
   useEffect(() => {
+    frameScoresRef.current = frameScores;
+  }, [frameScores]);
+
+  useEffect(() => {
     promptsRef.current = prompts;
   }, [prompts]);
 
@@ -386,17 +407,28 @@ function App() {
       // Convert to WAV blob
       const wavBlob = audioSamplesToWavBlob(resampledSamples, TARGET_SAMPLE_RATE);
 
-      // Send to backend - use ref to get latest prompts
+      // Send to backend using LOCAL endpoint for frame-wise scores
       const currentPrompts = promptsRef.current;
-      const result = await classifyAudio(wavBlob, currentPrompts);
+      const result = await classifyAudioLocal(wavBlob, currentPrompts, "unbiased");
 
       // Update scores and timing
       const elapsedMs = performance.now() - startTime;
-      setClassificationScores(result.scores);
+      // Use global_scores for the numerical display and heatmap strip
+      setClassificationScores(result.global_scores);
+      // Store frame-wise scores for potential future use (temporal heatmap)
+      setFrameScores(result.frame_scores);
       setLastInferenceTime(elapsedMs);
       setInferenceCount((prev) => prev + 1);
       if (result.timing) {
-        setTimingBreakdown(result.timing);
+        // Adapt timing breakdown for local similarity response
+        setTimingBreakdown({
+          read_ms: result.timing.read_ms,
+          decode_ms: result.timing.decode_ms,
+          tensor_ms: result.timing.tensor_ms,
+          audio_embed_ms: result.timing.local_similarity_ms, // local similarity is the main compute
+          similarity_ms: 0, // Not applicable for local endpoint
+          total_ms: result.timing.total_ms,
+        });
       }
       setClassifyError("");
     } catch (err) {
@@ -556,6 +588,11 @@ function App() {
           return;
         }
 
+        // Frame skipping for slower scroll speeds
+        frameCounterRef.current += 1;
+        const frameSkip = FRAME_SKIP_MAP[slideSpeed] || 1;
+        const shouldDraw = frameCounterRef.current % frameSkip === 0;
+
         analyser.getByteTimeDomainData(timeData);
         let sum = 0;
         for (let i = 0; i < timeData.length; i += 1) {
@@ -565,65 +602,67 @@ function App() {
         const rms = Math.sqrt(sum / timeData.length);
         setLevel(rms);
 
-        analyser.getByteFrequencyData(freqData);
+        // Only draw/shift canvases on non-skipped frames
+        if (shouldDraw) {
+          analyser.getByteFrequencyData(freqData);
 
-        spectrogramContext.drawImage(spectrogramCanvas, -slideSpeed, 0);
-        const range = freqRange.max - freqRange.min || 1;
-        for (let y = 0; y < spectrogramCanvas.height; y += 1) {
-          const freq = freqRange.min + (y / spectrogramCanvas.height) * range;
-          const index = Math.floor((freq / nyquist) * bufferLength);
-          const safeIndex = clamp(index, 0, bufferLength - 1);
-          const intensity = freqData[safeIndex] / 255;
-          spectrogramContext.fillStyle = heatColor(intensity);
-          // Draw multiple columns based on slide speed
-          for (let x = 0; x < slideSpeed; x++) {
+          // Shift spectrogram left by 1 pixel
+          spectrogramContext.drawImage(spectrogramCanvas, -1, 0);
+          const range = freqRange.max - freqRange.min || 1;
+          for (let y = 0; y < spectrogramCanvas.height; y += 1) {
+            const freq = freqRange.min + (y / spectrogramCanvas.height) * range;
+            const index = Math.floor((freq / nyquist) * bufferLength);
+            const safeIndex = clamp(index, 0, bufferLength - 1);
+            const intensity = freqData[safeIndex] / 255;
+            spectrogramContext.fillStyle = heatColor(intensity);
             spectrogramContext.fillRect(
-              spectrogramCanvas.width - slideSpeed + x,
+              spectrogramCanvas.width - 1,
               spectrogramCanvas.height - y - 1,
               1,
               1
             );
           }
-        }
 
-        heatmapContext.drawImage(heatmapCanvas, -slideSpeed, 0);
-        const currentPrompts = promptsRef.current;
-        const currentScores = classificationScoresRef.current;
-        const useNormalization = normalizeScoresRef.current;
-        const rowHeight = heatmapCanvas.height / currentPrompts.length;
+          // Shift heatmap left by 1 pixel
+          heatmapContext.drawImage(heatmapCanvas, -1, 0);
+          const currentPrompts = promptsRef.current;
+          const currentScores = classificationScoresRef.current;
+          const useNormalization = normalizeScoresRef.current;
+          const rowHeight = heatmapCanvas.height / currentPrompts.length;
 
-        // Compute display values based on mode
-        // If normalize mode: use min-max normalization (lowest=0, highest=1)
-        // If clamp mode: clamp negative to 0
-        let displayValues: Record<string, number> = {};
-        if (Object.keys(currentScores).length > 0) {
-          if (useNormalization) {
-            // Min-max normalization: stretch to fill 0-1 range
-            const values = Object.values(currentScores);
-            const min = Math.min(...values);
-            const max = Math.max(...values);
-            const range = max - min || 1;
-            for (const [key, val] of Object.entries(currentScores)) {
-              displayValues[key] = (val - min) / range;
-            }
-          } else {
-            // Clamp mode: negative → 0
-            for (const [key, val] of Object.entries(currentScores)) {
-              displayValues[key] = Math.max(0, Math.min(1, val));
+          // Compute display values based on mode
+          // If normalize mode: use min-max normalization (lowest=0, highest=1)
+          // If clamp mode: clamp negative to 0
+          let displayValues: Record<string, number> = {};
+          if (Object.keys(currentScores).length > 0) {
+            if (useNormalization) {
+              // Min-max normalization: stretch to fill 0-1 range
+              const values = Object.values(currentScores);
+              const min = Math.min(...values);
+              const max = Math.max(...values);
+              const range = max - min || 1;
+              for (const [key, val] of Object.entries(currentScores)) {
+                displayValues[key] = (val - min) / range;
+              }
+            } else {
+              // Clamp mode: negative → 0
+              for (const [key, val] of Object.entries(currentScores)) {
+                displayValues[key] = Math.max(0, Math.min(1, val));
+              }
             }
           }
-        }
 
-        currentPrompts.forEach((prompt, row) => {
-          const value = displayValues[prompt] ?? 0;
-          heatmapContext.fillStyle = heatColor(value);
-          heatmapContext.fillRect(
-            heatmapCanvas.width - 1,
-            row * rowHeight,
-            1,
-            rowHeight
-          );
-        });
+          currentPrompts.forEach((prompt, row) => {
+            const value = displayValues[prompt] ?? 0;
+            heatmapContext.fillStyle = heatColor(value);
+            heatmapContext.fillRect(
+              heatmapCanvas.width - 1,
+              row * rowHeight,
+              1,
+              rowHeight
+            );
+          });
+        }
 
         rafRef.current = requestAnimationFrame(draw);
       };
