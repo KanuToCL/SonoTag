@@ -1,0 +1,443 @@
+# SonoTag GUI Layout Proposal
+
+> **Created**: January 19, 2026
+> **Purpose**: Reorganize the UI for better UX given all current features
+
+---
+
+## Current Features Inventory
+
+### Audio Capture
+- Microphone selection dropdown
+- Request access / Refresh devices buttons
+- Start / Stop monitoring buttons
+- Mic level meter (RMS)
+- Permission state indicator
+
+### FLAM Detection
+- Custom prompts textarea (semicolon-separated)
+- Update prompts button
+- Normalization mode toggle (Clamped vs Relative)
+- Postprocessing toggle (Loudness Relabel)
+- Threshold slider for postprocessing
+
+### Inference Settings
+- Audio buffer duration slider (1-10s)
+- Slide speed control (1-5)
+- Model status indicator (ready/loading)
+- Last inference time
+- Inference count
+- Timing breakdown panel
+
+### Visualization
+- Spectrogram canvas (scrolling)
+- Frequency range controls (min/max Hz)
+- Heatmap canvas (scrolling, per-prompt rows)
+- Scores panel (grid with progress bars)
+- Color scale legend
+
+### System Info
+- Host CPU/Memory/GPU info
+- Browser info
+- Recommended buffer
+- Backend connection status
+
+---
+
+## Proposed Layout: "Focus Mode"
+
+A cleaner, more focused design that prioritizes visualization and reduces cognitive load.
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  🎤 SonoTag                                    [⚙️ Settings] [ℹ️ Info] [🔴 REC]│
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                                                                         │ │
+│  │                         SPECTROGRAM                                     │ │
+│  │                    (Full-width, scrolling)                              │ │
+│  │                                                                         │ │
+│  │  ← time ──────────────────────────────────────────────────────── now → │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │  speech        ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████████  0.82 │ │
+│  │  music         ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0.12 │ │
+│  │  dog barking   ░░░░░░░░░░░░░░░░░░████████████░░░░░░░░░░░░░░░░░░  0.67 │ │
+│  │  silence       ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0.23 │ │
+│  │                                                                         │ │
+│  │                         DETECTION HEATMAP                               │ │
+│  │                (Per-prompt rows, aligned with spectrogram)              │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+│  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────────┐ │
+│  │ 🎙️ MacBook Pro │ │ ⏱️ Buffer: 5s  │ │ 🎚️ Speed: 2   │ │ ✅ FLAM Ready    │ │
+│  │   Microphone   │ │ ━━━━━○━━━━━━  │ │ ━━○━━━━━━━━━━ │ │ Last: 1.24s #42  │ │
+│  └───────────────┘ └───────────────┘ └───────────────┘ └───────────────────┘ │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Changes
+
+1. **Top Bar**: Simplified header with mode toggles
+   - Settings gear opens slide-out panel
+   - Info icon shows system details
+   - REC button (red = recording) replaces Start/Stop
+
+2. **Visualization First**: Spectrogram + Heatmap take 80% of screen
+   - Full-width for better temporal resolution
+   - Heatmap labels on left, current scores on right
+
+3. **Quick Controls Bar**: Horizontal strip at bottom
+   - Mic selector (compact dropdown)
+   - Buffer duration (compact slider)
+   - Slide speed (compact slider)
+   - Status indicator
+
+---
+
+## Proposed Layout: "Power User Mode"
+
+For users who want all controls visible at once.
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  🎤 SonoTag - Realtime Audio Console                    [Focus] [Power] [⚙️] │
+├────────────────────────────────────┬─────────────────────────────────────────┤
+│                                    │                                         │
+│  ┌────────────────────────────┐   │  PROMPTS                                │
+│  │                            │   │  ┌─────────────────────────────────┐   │
+│  │       SPECTROGRAM          │   │  │ speech; music; dog barking;    │   │
+│  │                            │   │  │ child singing; silence;        │   │
+│  │                            │   │  │ footsteps; glass breaking      │   │
+│  └────────────────────────────┘   │  └─────────────────────────────────┘   │
+│                                    │  [Update] [Reset Default] [Presets ▼] │
+│  ┌────────────────────────────┐   │                                         │
+│  │                            │   │  DETECTION MODE                        │
+│  │       HEATMAP              │   │  ○ Clamped (paper default)             │
+│  │    (per-prompt rows)       │   │  ● Relative (normalized 0-1)           │
+│  │                            │   │                                         │
+│  └────────────────────────────┘   │  ☑ Postprocess (Loudness Relabel)      │
+│                                    │    Threshold: [0.5] ━━━━━○━━━━━━       │
+│  ┌────────────────────────────┐   │                                         │
+│  │  speech      ████░░  0.82 │   ├─────────────────────────────────────────┤
+│  │  music       ░░░░░░  0.12 │   │                                         │
+│  │  dog barking ███░░░  0.67 │   │  AUDIO CAPTURE                          │
+│  │  silence     █░░░░░  0.23 │   │  🎙️ [MacBook Pro Microphone     ▼]      │
+│  │  (live scores with bars)  │   │                                         │
+│  └────────────────────────────┘   │  [▶ Start]  [⏹ Stop]  [🔄 Refresh]     │
+│                                    │                                         │
+│                                    │  Level: ████████░░░░░░░░░ 62%          │
+│                                    │                                         │
+│                                    ├─────────────────────────────────────────┤
+│                                    │                                         │
+│                                    │  INFERENCE                              │
+│                                    │  Buffer:  5s  ━━━━━○━━━━━ (1-10)       │
+│                                    │  Speed:   2   ━━○━━━━━━━━ (1-5)        │
+│                                    │  Freq:    [0] to [12000] Hz [Full]     │
+│                                    │                                         │
+│                                    │  Status: ✅ Ready (cpu)                │
+│                                    │  Last:   1.24s | Count: 42             │
+│                                    │                                         │
+│                                    │  ┌─ Timing ──────────────────────┐     │
+│                                    │  │ Read:     1.2ms               │     │
+│                                    │  │ Decode:   150ms               │     │
+│                                    │  │ FLAM:     1050ms ⬅ bottleneck │     │
+│                                    │  │ Postproc: 0.3ms               │     │
+│                                    │  │ Total:    1204ms              │     │
+│                                    │  └────────────────────────────────┘     │
+│                                    │                                         │
+└────────────────────────────────────┴─────────────────────────────────────────┘
+```
+
+---
+
+## Proposed Layout: "Mobile/Compact Mode"
+
+For narrow screens or embedded use.
+
+```
+┌─────────────────────────────────┐
+│  🎤 SonoTag          [⚙️] [▶/⏹] │
+├─────────────────────────────────┤
+│                                 │
+│  ┌───────────────────────────┐ │
+│  │      SPECTROGRAM          │ │
+│  │      (compact height)     │ │
+│  └───────────────────────────┘ │
+│                                 │
+│  ┌───────────────────────────┐ │
+│  │ speech      ████░░  0.82 │ │
+│  │ music       ░░░░░░  0.12 │ │
+│  │ dog barking ███░░░  0.67 │ │
+│  │ (heatmap + live scores)   │ │
+│  └───────────────────────────┘ │
+│                                 │
+│  🎙️ [MacBook Pro ▼] Level: 62% │
+│  Buffer: 5s  Speed: 2  ✅ Ready │
+│                                 │
+└─────────────────────────────────┘
+```
+
+---
+
+## Component Breakdown
+
+### 1. Header Bar
+```tsx
+<header className="header-bar">
+  <Logo />
+  <StatusPill status={monitoringStatus} />
+  <ModeToggle modes={["Focus", "Power"]} />
+  <SettingsButton onClick={openSettings} />
+</header>
+```
+
+### 2. Visualization Stack
+```tsx
+<div className="viz-stack">
+  <SpectrogramCanvas 
+    freqRange={freqRange}
+    slideSpeed={slideSpeed}
+  />
+  <HeatmapCanvas 
+    prompts={prompts}
+    scores={classificationScores}
+    frameScores={frameScores}
+    smoothedScores={smoothedFrameScores}
+    showSmoothed={postprocess}
+  />
+  <LiveScoresPanel 
+    prompts={prompts}
+    scores={classificationScores}
+    normalized={normalizeScores}
+  />
+</div>
+```
+
+### 3. Quick Controls (Bottom Bar)
+```tsx
+<div className="quick-controls">
+  <MicSelector 
+    devices={devices}
+    selected={selectedDeviceId}
+    onSelect={setSelectedDeviceId}
+  />
+  <BufferSlider 
+    value={bufferSeconds}
+    min={1} max={10}
+    onChange={setBufferSeconds}
+  />
+  <SpeedSlider 
+    value={slideSpeed}
+    min={1} max={5}
+    onChange={setSlideSpeed}
+  />
+  <StatusIndicator 
+    modelStatus={modelStatus}
+    inferenceTime={lastInferenceTime}
+    inferenceCount={inferenceCount}
+  />
+</div>
+```
+
+### 4. Settings Panel (Slide-out or Modal)
+```tsx
+<SettingsPanel isOpen={settingsOpen}>
+  <Section title="Prompts">
+    <PromptsTextarea value={promptInput} onChange={setPromptInput} />
+    <PromptPresets onSelect={loadPreset} />
+    <Button onClick={updatePrompts}>Update</Button>
+  </Section>
+  
+  <Section title="Detection Mode">
+    <RadioGroup 
+      options={["Clamped (paper)", "Relative (normalized)"]}
+      value={normalizeScores ? "relative" : "clamped"}
+      onChange={...}
+    />
+    <Checkbox 
+      label="Loudness Relabel Postprocessing"
+      checked={postprocess}
+      onChange={setPostprocess}
+    />
+    <Slider 
+      label="Threshold"
+      value={threshold}
+      min={0} max={1} step={0.05}
+      onChange={setThreshold}
+      disabled={!postprocess}
+    />
+  </Section>
+  
+  <Section title="Frequency Range">
+    <FreqRangeInputs 
+      min={freqMin} max={freqMax}
+      nyquist={nyquist}
+      onChange={...}
+    />
+  </Section>
+  
+  <Section title="System Info" collapsible>
+    <SystemInfoPanel 
+      backendInfo={backendInfo}
+      browserInfo={browserInfo}
+      recommendation={recommendation}
+    />
+  </Section>
+</SettingsPanel>
+```
+
+---
+
+## Feature: Prompt Presets
+
+Add quick-select presets for common use cases:
+
+```tsx
+const PROMPT_PRESETS = {
+  "General Audio": [
+    "speech", "music", "silence", "noise"
+  ],
+  "Voice Detection": [
+    "speech", "male speech, man speaking", 
+    "female speech, woman speaking", 
+    "child speech, kid speaking", "singing"
+  ],
+  "Pet Sounds": [
+    "dog barking", "cat meowing", "bird chirping", 
+    "animal sounds"
+  ],
+  "Environment": [
+    "traffic noise", "rain", "wind", 
+    "construction", "crowd noise"
+  ],
+  "Security": [
+    "glass breaking", "gunshot", "screaming", 
+    "alarm", "siren"
+  ],
+  "Music Analysis": [
+    "music", "drums", "guitar", "piano", 
+    "vocals", "bass"
+  ]
+};
+```
+
+---
+
+## Feature: Temporal Heatmap View
+
+New visualization option that shows frame-wise detection over time:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  TEMPORAL DETECTION (10s window, 20 frames × 0.5s)                         │
+│                                                                             │
+│  speech      │▓▓▓▓│▓▓▓▓│▓▓▓▓│░░░░│░░░░│░░░░│░░░░│▓▓▓▓│▓▓▓▓│▓▓▓▓│▓▓▓▓│▓▓▓▓│
+│  music       │░░░░│░░░░│░░░░│░░░░│░░░░│░░░░│░░░░│░░░░│░░░░│░░░░│░░░░│░░░░│
+│  dog barking │░░░░│░░░░│░░░░│▓▓▓▓│▓▓▓▓│▓▓▓▓│▓▓▓▓│░░░░│░░░░│░░░░│░░░░│░░░░│
+│              └────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┘
+│               0s   1s   2s   3s   4s   5s   6s   7s   8s   9s  10s        │
+│                                                                             │
+│  ○ Raw Scores  ● Smoothed (Loudness Relabel)                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+This uses the `frame_scores` / `smoothed_frame_scores` from `/classify-local`.
+
+---
+
+## Color Scheme Options
+
+### Current (Warm/Sepia)
+```css
+--bg-dark: #0b0f14;
+--bg-panel: #1a120d;
+--accent: #ff7a3d;
+--text: #eee;
+--heat-low: rgb(26, 20, 16);
+--heat-high: rgb(244, 219, 173);
+```
+
+### Alternative: Cool/Technical
+```css
+--bg-dark: #0a0e14;
+--bg-panel: #0d1117;
+--accent: #58a6ff;
+--text: #e6edf3;
+--heat-low: rgb(13, 17, 23);
+--heat-high: rgb(88, 166, 255);
+```
+
+### Alternative: High Contrast
+```css
+--bg-dark: #000000;
+--bg-panel: #111111;
+--accent: #00ff88;
+--text: #ffffff;
+--heat-low: rgb(0, 0, 0);
+--heat-high: rgb(0, 255, 136);
+```
+
+---
+
+## Implementation Priority
+
+1. **Phase 1: Quick Controls Bar** (1-2 hours)
+   - Move mic selector, buffer, speed to bottom bar
+   - Compact inline sliders
+
+2. **Phase 2: Settings Slide-out** (2-3 hours)
+   - Move prompts, detection mode, system info to slide-out
+   - Clean up main view
+
+3. **Phase 3: Prompt Presets** (1 hour)
+   - Add preset dropdown
+   - Store custom presets in localStorage
+
+4. **Phase 4: Temporal Heatmap** (2-3 hours)
+   - Use frame_scores to draw per-frame blocks
+   - Toggle between scrolling and static view
+
+5. **Phase 5: Mode Toggle** (1-2 hours)
+   - Focus mode (minimal UI)
+   - Power mode (all controls visible)
+   - Mobile mode (responsive)
+
+---
+
+## Accessibility Considerations
+
+- All controls keyboard-navigable
+- ARIA labels for screen readers
+- Color scheme meets WCAG contrast ratios
+- Focus indicators on interactive elements
+- Reduce motion option for animations
+
+---
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `App.tsx` | Main layout restructure |
+| `styles.css` | New component styles |
+| `components/Header.tsx` | New header component |
+| `components/QuickControls.tsx` | Bottom bar component |
+| `components/SettingsPanel.tsx` | Slide-out settings |
+| `components/PromptPresets.tsx` | Preset dropdown |
+| `components/TemporalHeatmap.tsx` | New frame-wise viz |
+
+---
+
+## Summary
+
+The proposed layout prioritizes:
+
+1. **Visualization first** - Spectrogram and heatmap get maximum screen space
+2. **Progressive disclosure** - Advanced settings hidden in panel
+3. **Quick access** - Essential controls always visible in bottom bar
+4. **Flexibility** - Mode toggle for different user needs
+5. **Temporal clarity** - New frame-wise heatmap shows detection over time
