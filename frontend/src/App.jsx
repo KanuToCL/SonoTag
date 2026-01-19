@@ -28,15 +28,15 @@ const formatBytes = (bytes) => {
   return `${gb.toFixed(1)} GB`;
 };
 
-const formatHz = (value) => {
+const formatHz = (value, withUnit = false) => {
   if (!Number.isFinite(value)) {
     return "--";
   }
   if (value >= 1000) {
     const rounded = Math.round(value / 100) / 10;
-    return `${rounded}k`;
+    return withUnit ? `${rounded} kHz` : `${rounded}k`;
   }
-  return `${Math.round(value)}`;
+  return withUnit ? `${Math.round(value)} Hz` : `${Math.round(value)}`;
 };
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -161,7 +161,7 @@ function App() {
     for (let i = 0; i <= steps; i += 1) {
       const t = i / steps;
       const value = freqRange.max - t * (freqRange.max - freqRange.min);
-      labels.push(`${formatHz(value)} Hz`);
+      labels.push(formatHz(value, true));
     }
     return labels;
   }, [freqRange.max, freqRange.min]);
@@ -633,7 +633,7 @@ function App() {
                 </button>
               </div>
               <span className="control-hint">
-                Nyquist: {formatHz(nyquist)} Hz
+                Nyquist: {formatHz(nyquist, true)}
               </span>
             </div>
             <div className="spectrogram-frame">
