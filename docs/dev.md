@@ -1,0 +1,44 @@
+# Local Development
+
+## Quick start scripts
+- Windows: run `install.bat`, then `run.bat`.
+- macOS: run `chmod +x *.command`, then `./install.command` and `./run.command`.
+
+## Prerequisites
+- Python 3.10+
+- Node.js 18+ (npm included)
+
+## Backend
+1) Create a virtual environment and install deps:
+
+```bash
+cd backend
+python -m venv .venv
+. .venv/Scripts/activate
+pip install -r requirements.txt
+```
+
+2) Start the API:
+
+```bash
+uvicorn app.main:app --reload --port 8000
+```
+
+## Frontend
+1) Install and run the UI:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+2) Optional: point the UI at a custom API base URL:
+
+```bash
+set VITE_API_BASE_URL=http://localhost:8000
+```
+
+## Notes
+- The backend currently exposes `/system-info` and `/recommend-buffer` with heuristics.
+- FLAM model wiring will follow once the inference service is integrated.
