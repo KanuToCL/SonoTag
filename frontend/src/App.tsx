@@ -1,9 +1,105 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from "react";
+
+// =============================================================================
+// Types & Interfaces
+// =============================================================================
+
+interface CategoryBand {
+  label: string;
+  start: number;
+  end: number;
+}
+
+interface HeatColorStop {
+  stop: number;
+  color: [number, number, number];
+}
+
+interface BackendCpuInfo {
+  logical_cores?: number;
+  physical_cores?: number;
+  model?: string;
+}
+
+interface BackendMemoryInfo {
+  total_bytes?: number;
+}
+
+interface BackendGpuInfo {
+  name?: string;
+  memory_bytes?: number;
+}
+
+interface BackendInfo {
+  platform?: string;
+  python_version?: string;
+  cpu?: BackendCpuInfo;
+  cpu_count?: number; // Legacy fallback
+  memory?: BackendMemoryInfo;
+  gpus?: BackendGpuInfo[];
+  env?: {
+    FLAM_MODEL_PATH?: string;
+  };
+}
+
+interface Recommendation {
+  buffer: number | null;
+  rationale: string;
+  source: string;
+}
+
+interface BrowserInfo {
+  userAgent: string;
+  platform: string;
+  hardwareConcurrency: number;
+  deviceMemory: number;
+  language: string;
+}
+
+interface FreqRange {
+  min: number;
+  max: number;
+}
+
+type PermissionState = "unknown" | "granted" | "denied";
+type MonitoringStatus = "idle" | "running" | "stopped";
+
+// =============================================================================
+// Constants
+// =============================================================================
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
-const fallbackRecommendation = (cores, memoryGb) => {
+const CATEGORY_BANDS: CategoryBand[] = [
+  { label: "man speaking", start: 0.02, end: 0.12 },
+  { label: "shouting", start: 0.1, end: 0.22 },
+  { label: "rock music", start: 0.18, end: 0.5 },
+  { label: "car engine accel", start: 0.04, end: 0.16 },
+  { label: "hard braking", start: 0.06, end: 0.2 },
+  { label: "glass breaking", start: 0.32, end: 0.7 },
+];
+
+const HEAT_COLORS: HeatColorStop[] = [
+  { stop: 0, color: [26, 20, 16] },
+  { stop: 0.3, color: [88, 52, 29] },
+  { stop: 0.55, color: [156, 88, 45] },
+  { stop: 0.78, color: [214, 142, 72] },
+  { stop: 1, color: [244, 219, 173] },
+];
+
+// =============================================================================
+// Utility Functions
+// =============================================================================
+
+const fallbackRecommendation = (cores: number, memoryGb: number): number => {
   if (cores <= 4 || memoryGb <= 4) {
     return 10;
   }
@@ -13,14 +109,17 @@ const fallbackRecommendation = (cores, memoryGb) => {
   return 2;
 };
 
-const formatValue = (value, suffix) => {
+const formatValue = (
+  value: string | number | null | undefined,
+  suffix?: string
+): string => {
   if (value === null || value === undefined || value === "") {
     return "unknown";
   }
   return `${value}${suffix || ""}`;
 };
 
-const formatBytes = (bytes) => {
+const formatBytes = (bytes: number | null | undefined): string => {
   if (!bytes || Number.isNaN(bytes)) {
     return "unknown";
   }
@@ -28,7 +127,7 @@ const formatBytes = (bytes) => {
   return `${gb.toFixed(1)} GB`;
 };
 
-const formatHz = (value, withUnit = false) => {
+const formatHz = (value: number, withUnit = false): string => {
   if (!Number.isFinite(value)) {
     return "--";
   }
@@ -39,28 +138,13 @@ const formatHz = (value, withUnit = false) => {
   return withUnit ? `${Math.round(value)} Hz` : `${Math.round(value)}`;
 };
 
-const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+const clamp = (value: number, min: number, max: number): number =>
+  Math.min(max, Math.max(min, value));
 
-const CATEGORY_BANDS = [
-  { label: "man speaking", start: 0.02, end: 0.12 },
-  { label: "shouting", start: 0.1, end: 0.22 },
-  { label: "rock music", start: 0.18, end: 0.5 },
-  { label: "car engine accel", start: 0.04, end: 0.16 },
-  { label: "hard braking", start: 0.06, end: 0.2 },
-  { label: "glass breaking", start: 0.32, end: 0.7 },
-];
+const lerp = (start: number, end: number, amount: number): number =>
+  start + (end - start) * amount;
 
-const HEAT_COLORS = [
-  { stop: 0, color: [26, 20, 16] },
-  { stop: 0.3, color: [88, 52, 29] },
-  { stop: 0.55, color: [156, 88, 45] },
-  { stop: 0.78, color: [214, 142, 72] },
-  { stop: 1, color: [244, 219, 173] },
-];
-
-const lerp = (start, end, amount) => start + (end - start) * amount;
-
-const heatColor = (value) => {
+const heatColor = (value: number): string => {
   const clamped = Math.min(1, Math.max(0, value));
   let start = HEAT_COLORS[0];
   let end = HEAT_COLORS[HEAT_COLORS.length - 1];
@@ -84,7 +168,11 @@ const heatColor = (value) => {
   return `rgb(${r}, ${g}, ${b})`;
 };
 
-const averageBand = (freqData, startPct, endPct) => {
+const averageBand = (
+  freqData: Uint8Array,
+  startPct: number,
+  endPct: number
+): number => {
   const start = Math.floor(startPct * freqData.length);
   const end = Math.max(start + 1, Math.floor(endPct * freqData.length));
   let sum = 0;
@@ -94,60 +182,60 @@ const averageBand = (freqData, startPct, endPct) => {
   return sum / (end - start) / 255;
 };
 
+// =============================================================================
+// App Component
+// =============================================================================
+
 function App() {
-  const [devices, setDevices] = useState([]);
-  const [selectedDeviceId, setSelectedDeviceId] = useState("");
-  const [permissionState, setPermissionState] = useState("unknown");
-  const [status, setStatus] = useState("idle");
-  const [level, setLevel] = useState(0);
-  const [error, setError] = useState("");
-  const [backendInfo, setBackendInfo] = useState(null);
-  const [backendError, setBackendError] = useState("");
-  const [recommendation, setRecommendation] = useState({
+  // ---------------------------------------------------------------------------
+  // State
+  // ---------------------------------------------------------------------------
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
+  const [permissionState, setPermissionState] =
+    useState<PermissionState>("unknown");
+  const [status, setStatus] = useState<MonitoringStatus>("idle");
+  const [level, setLevel] = useState<number>(0);
+  const [error, setError] = useState<string>("");
+  const [backendInfo, setBackendInfo] = useState<BackendInfo | null>(null);
+  const [backendError, setBackendError] = useState<string>("");
+  const [recommendation, setRecommendation] = useState<Recommendation>({
     buffer: null,
     rationale: "",
     source: "",
   });
-  const [sampleRate, setSampleRate] = useState(null);
-  const [freqMin, setFreqMin] = useState(0);
-  const [freqMax, setFreqMax] = useState(12000);
+  const [sampleRate, setSampleRate] = useState<number | null>(null);
+  const [freqMin, setFreqMin] = useState<number>(0);
+  const [freqMax, setFreqMax] = useState<number>(12000);
 
-  const spectrogramRef = useRef(null);
-  const heatmapRef = useRef(null);
-  const analyserRef = useRef(null);
-  const audioContextRef = useRef(null);
-  const sourceRef = useRef(null);
-  const streamRef = useRef(null);
-  const rafRef = useRef(0);
+  // ---------------------------------------------------------------------------
+  // Refs
+  // ---------------------------------------------------------------------------
+  const spectrogramRef = useRef<HTMLCanvasElement>(null);
+  const heatmapRef = useRef<HTMLCanvasElement>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const rafRef = useRef<number>(0);
 
-  const browserInfo = useMemo(
+  // ---------------------------------------------------------------------------
+  // Derived Values
+  // ---------------------------------------------------------------------------
+  const browserInfo: BrowserInfo = useMemo(
     () => ({
       userAgent: navigator.userAgent,
       platform: navigator.platform,
       hardwareConcurrency: navigator.hardwareConcurrency || 0,
-      deviceMemory: navigator.deviceMemory || 0,
+      deviceMemory: (navigator as Navigator & { deviceMemory?: number }).deviceMemory || 0,
       language: navigator.language,
     }),
     []
   );
 
-  const handleFreqMinChange = (event) => {
-    const value = Number(event.target.value);
-    setFreqMin(Number.isNaN(value) ? 0 : value);
-  };
-
-  const handleFreqMaxChange = (event) => {
-    const value = Number(event.target.value);
-    setFreqMax(Number.isNaN(value) ? nyquist : value);
-  };
-
-  const setFullRange = () => {
-    setFreqMin(0);
-    setFreqMax(Math.round(nyquist));
-  };
-
   const nyquist = sampleRate ? sampleRate / 2 : 24000;
-  const freqRange = useMemo(() => {
+
+  const freqRange: FreqRange = useMemo(() => {
     const min = clamp(Number(freqMin) || 0, 0, nyquist);
     const maxCandidate = Number(freqMax) || nyquist;
     const max = clamp(maxCandidate, 0, nyquist);
@@ -157,7 +245,7 @@ function App() {
 
   const freqAxisLabels = useMemo(() => {
     const steps = 4;
-    const labels = [];
+    const labels: string[] = [];
     for (let i = 0; i <= steps; i += 1) {
       const t = i / steps;
       const value = freqRange.max - t * (freqRange.max - freqRange.min);
@@ -166,7 +254,28 @@ function App() {
     return labels;
   }, [freqRange.max, freqRange.min]);
 
-  const refreshDevices = useCallback(async () => {
+  // ---------------------------------------------------------------------------
+  // Event Handlers
+  // ---------------------------------------------------------------------------
+  const handleFreqMinChange = (event: ChangeEvent<HTMLInputElement>): void => {
+    const value = Number(event.target.value);
+    setFreqMin(Number.isNaN(value) ? 0 : value);
+  };
+
+  const handleFreqMaxChange = (event: ChangeEvent<HTMLInputElement>): void => {
+    const value = Number(event.target.value);
+    setFreqMax(Number.isNaN(value) ? nyquist : value);
+  };
+
+  const setFullRange = (): void => {
+    setFreqMin(0);
+    setFreqMax(Math.round(nyquist));
+  };
+
+  // ---------------------------------------------------------------------------
+  // Device Management
+  // ---------------------------------------------------------------------------
+  const refreshDevices = useCallback(async (): Promise<void> => {
     if (!navigator.mediaDevices?.enumerateDevices) {
       setError("Browser does not support device enumeration.");
       return;
@@ -174,98 +283,22 @@ function App() {
 
     try {
       const allDevices = await navigator.mediaDevices.enumerateDevices();
-      const inputs = allDevices.filter((device) => device.kind === "audioinput");
+      const inputs = allDevices.filter(
+        (device) => device.kind === "audioinput"
+      );
       setDevices(inputs);
       if (!selectedDeviceId && inputs.length > 0) {
         setSelectedDeviceId(inputs[0].deviceId);
       }
-    } catch (err) {
+    } catch {
       setError("Failed to enumerate audio devices.");
     }
   }, [selectedDeviceId]);
 
-  useEffect(() => {
-    refreshDevices();
-    if (!navigator.mediaDevices?.addEventListener) {
-      return undefined;
-    }
-
-    navigator.mediaDevices.addEventListener("devicechange", refreshDevices);
-    return () => {
-      navigator.mediaDevices.removeEventListener("devicechange", refreshDevices);
-    };
-  }, [refreshDevices]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadBackendInfo = async () => {
-      try {
-        const response = await fetch(`${API_BASE_URL}/system-info`);
-        if (!response.ok) {
-          throw new Error("Backend not ready");
-        }
-        const data = await response.json();
-        if (!cancelled) {
-          setBackendInfo(data);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setBackendError("Backend unavailable. Using browser-only info.");
-        }
-      }
-    };
-
-    const loadRecommendation = async () => {
-      try {
-        const response = await fetch(`${API_BASE_URL}/recommend-buffer`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ target_latency_s: 2.0 }),
-        });
-        if (!response.ok) {
-          throw new Error("Recommendation not available");
-        }
-        const data = await response.json();
-        if (!cancelled) {
-          setRecommendation({
-            buffer: data.recommended_buffer_s,
-            rationale: data.rationale,
-            source: "backend",
-          });
-        }
-      } catch (err) {
-        if (!cancelled) {
-          const fallback = fallbackRecommendation(
-            browserInfo.hardwareConcurrency,
-            browserInfo.deviceMemory
-          );
-          setRecommendation({
-            buffer: fallback,
-            rationale: "Browser heuristic based on core count and memory.",
-            source: "browser",
-          });
-        }
-      }
-    };
-
-    loadBackendInfo();
-    loadRecommendation();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [browserInfo.deviceMemory, browserInfo.hardwareConcurrency]);
-
-  useEffect(() => {
-    if (!sampleRate) {
-      return;
-    }
-    setFreqMin((current) => clamp(Number(current) || 0, 0, nyquist));
-    setFreqMax((current) => clamp(Number(current) || nyquist, 0, nyquist));
-  }, [nyquist, sampleRate]);
-
-  const stopMonitoring = useCallback(async () => {
+  // ---------------------------------------------------------------------------
+  // Audio Monitoring
+  // ---------------------------------------------------------------------------
+  const stopMonitoring = useCallback(async (): Promise<void> => {
     if (rafRef.current) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = 0;
@@ -295,27 +328,21 @@ function App() {
     setLevel(0);
   }, []);
 
-  useEffect(() => {
-    return () => {
-      stopMonitoring();
-    };
-  }, [stopMonitoring]);
-
-  const requestPermission = async () => {
+  const requestPermission = async (): Promise<boolean> => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setPermissionState("granted");
       stream.getTracks().forEach((track) => track.stop());
       await refreshDevices();
       return true;
-    } catch (err) {
+    } catch {
       setPermissionState("denied");
       setError("Microphone permission denied.");
       return false;
     }
   };
 
-  const startMonitoring = async () => {
+  const startMonitoring = async (): Promise<void> => {
     setError("");
 
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -329,7 +356,7 @@ function App() {
       return;
     }
 
-    const constraints =
+    const constraints: MediaStreamConstraints =
       selectedDeviceId && selectedDeviceId !== "default"
         ? { audio: { deviceId: { exact: selectedDeviceId } } }
         : { audio: true };
@@ -379,7 +406,7 @@ function App() {
         heatmapContext.fillRect(0, 0, heatmapCanvas.width, heatmapCanvas.height);
       }
 
-      const draw = () => {
+      const draw = (): void => {
         if (
           !analyserRef.current ||
           !spectrogramContext ||
@@ -440,11 +467,104 @@ function App() {
       setSampleRate(audioContext.sampleRate);
       setStatus("running");
       rafRef.current = requestAnimationFrame(draw);
-    } catch (err) {
+    } catch {
       setError("Unable to start microphone capture.");
     }
   };
 
+  // ---------------------------------------------------------------------------
+  // Effects
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    refreshDevices();
+    if (!navigator.mediaDevices?.addEventListener) {
+      return undefined;
+    }
+
+    navigator.mediaDevices.addEventListener("devicechange", refreshDevices);
+    return () => {
+      navigator.mediaDevices.removeEventListener("devicechange", refreshDevices);
+    };
+  }, [refreshDevices]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadBackendInfo = async (): Promise<void> => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/system-info`);
+        if (!response.ok) {
+          throw new Error("Backend not ready");
+        }
+        const data: BackendInfo = await response.json();
+        if (!cancelled) {
+          setBackendInfo(data);
+        }
+      } catch {
+        if (!cancelled) {
+          setBackendError("Backend unavailable. Using browser-only info.");
+        }
+      }
+    };
+
+    const loadRecommendation = async (): Promise<void> => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/recommend-buffer`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ target_latency_s: 2.0 }),
+        });
+        if (!response.ok) {
+          throw new Error("Recommendation not available");
+        }
+        const data = await response.json();
+        if (!cancelled) {
+          setRecommendation({
+            buffer: data.recommended_buffer_s,
+            rationale: data.rationale,
+            source: "backend",
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          const fallback = fallbackRecommendation(
+            browserInfo.hardwareConcurrency,
+            browserInfo.deviceMemory
+          );
+          setRecommendation({
+            buffer: fallback,
+            rationale: "Browser heuristic based on core count and memory.",
+            source: "browser",
+          });
+        }
+      }
+    };
+
+    loadBackendInfo();
+    loadRecommendation();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [browserInfo.deviceMemory, browserInfo.hardwareConcurrency]);
+
+  useEffect(() => {
+    if (!sampleRate) {
+      return;
+    }
+    setFreqMin((current) => clamp(Number(current) || 0, 0, nyquist));
+    setFreqMax((current) => clamp(Number(current) || nyquist, 0, nyquist));
+  }, [nyquist, sampleRate]);
+
+  useEffect(() => {
+    return () => {
+      stopMonitoring();
+    };
+  }, [stopMonitoring]);
+
+  // ---------------------------------------------------------------------------
+  // Derived Display Values
+  // ---------------------------------------------------------------------------
   const levelPercent = Math.min(100, Math.round(level * 140));
   const hostCpuLogical =
     backendInfo?.cpu?.logical_cores ?? backendInfo?.cpu_count ?? null;
@@ -454,6 +574,9 @@ function App() {
   const hostPlatform = backendInfo?.platform ?? null;
   const hostGpus = backendInfo?.gpus ?? [];
 
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
   return (
     <div className="page">
       <header className="header">
