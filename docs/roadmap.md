@@ -44,6 +44,7 @@ Deliver a modern, browser-first audio console that lets users pick a microphone,
 - Local dev instructions in `docs/dev.md`.
 - Modern UI refresh with frequency range controls and spectrogram axis labels.
 - Backend system info expanded to report host CPU and memory.
+- Install scripts auto-clone OpenFLAM and can download model weights.
 
 ### In Progress
 - Define FLAM inference workflow (prompt list, buffer size, output schema).

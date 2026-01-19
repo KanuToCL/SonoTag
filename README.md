@@ -27,6 +27,7 @@ chmod +x *.command
 ## Requirements
 - Python 3.10+
 - Node.js 18+ (npm included)
+- Git (for auto-cloning OpenFLAM during install)
 
 ## Architecture
 - `frontend/`: Vite + React UI.
@@ -40,3 +41,4 @@ chmod +x *.command
 - OpenFLAM is under a non-commercial license; review before deployment.
 - For more details, see `docs/dev.md`, `docs/roadmap.md`, and
   `docs/flam_integration.md`.
+ - The install scripts can optionally download the FLAM model weights.

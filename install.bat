@@ -38,6 +38,25 @@ if not exist frontend\package.json (
   goto :fail
 )
 
+if not exist openflam\pyproject.toml (
+  if exist openflam (
+    echo Found openflam\ directory but missing pyproject.toml.
+    echo Please remove or fix the folder, then re-run install.
+    goto :fail
+  )
+  where git >nul 2>nul
+  if errorlevel 1 (
+    echo Git not found. Install Git or clone https://github.com/adobe-research/openflam manually.
+    goto :fail
+  )
+  echo Cloning OpenFLAM repo...
+  git clone https://github.com/adobe-research/openflam openflam
+  if errorlevel 1 (
+    echo OpenFLAM clone failed.
+    goto :fail
+  )
+)
+
 if not exist backend\.venv (
   python -m venv backend\.venv
 )
@@ -48,6 +67,25 @@ pip install -r backend\requirements.txt
 if errorlevel 1 (
   echo Backend dependency install failed.
   goto :fail
+)
+
+echo Installing OpenFLAM dependencies (this may take a while)...
+pip install -e openflam
+if errorlevel 1 (
+  echo OpenFLAM install failed.
+  goto :fail
+)
+
+if not exist openflam_ckpt\open_flam_oct17.pth (
+  set /p DOWNLOAD_MODEL=Download FLAM model weights (~800MB)? [y/N]:
+  if /I "%DOWNLOAD_MODEL%"=="y" (
+    echo Downloading model to openflam_ckpt\open_flam_oct17.pth ...
+    powershell -NoProfile -Command "try { New-Item -ItemType Directory -Force openflam_ckpt | Out-Null; Invoke-WebRequest -Uri 'https://huggingface.co/kechenadobe/OpenFLAM/resolve/main/open_flam_oct17.pth' -OutFile 'openflam_ckpt\\open_flam_oct17.pth' } catch { exit 1 }"
+    if errorlevel 1 (
+      echo Model download failed.
+      goto :fail
+    )
+  )
 )
 
 cd /d frontend

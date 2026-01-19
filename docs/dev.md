@@ -7,6 +7,7 @@
 ## Prerequisites
 - Python 3.10+
 - Node.js 18+ (npm included)
+- Git (for auto-cloning OpenFLAM during install)
 
 ## Backend
 1) Create a virtual environment and install deps:
@@ -45,3 +46,4 @@ set VITE_API_BASE_URL=http://localhost:8000
 - The System Snapshot panel shows host specs only when the backend is running.
 - Sample rate is available after starting mic monitoring.
 - For FLAM integration steps, see `docs/flam_integration.md`.
+- `install.bat` / `install.command` will auto-clone OpenFLAM if missing and can optionally download the model weights.

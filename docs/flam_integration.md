@@ -13,16 +13,17 @@ From the repo root:
 
 ```bat
 call backend\.venv\Scripts\activate.bat
-pip install -e ..\openflam
+pip install -e openflam
 ```
 
 macOS:
 ```bash
 source backend/.venv/bin/activate
-pip install -e ../openflam
+pip install -e openflam
 ```
 
 This installs OpenFLAM and its dependencies (torch, librosa, etc).
+If you use `install.bat` / `install.command`, the repo clone and install are handled automatically.
 
 ## Step 2: Smoke test with a local audio file
 Use the probe script in `backend/scripts/flam_probe.py`:

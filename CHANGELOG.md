@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 - Roadmap and local development docs.
 - First-user `README.md` with quick start and architecture overview.
 - FLAM integration guide and a local probe script for experimentation.
+ - Install scripts now clone OpenFLAM automatically and can download model weights.
 ### Changed
 - Hardened install/run scripts with dependency/version checks and port cleanup.
 - Backend system info now reports host CPU and memory details.

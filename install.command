@@ -52,6 +52,17 @@ if [ ! -f "frontend/package.json" ]; then
   fail "Missing frontend/package.json"
 fi
 
+if [ ! -f "openflam/pyproject.toml" ]; then
+  if [ -d "openflam" ]; then
+    fail "Found openflam/ directory but missing pyproject.toml. Remove or fix the folder."
+  fi
+  if ! command -v git >/dev/null 2>&1; then
+    fail "Git not found. Install Git or clone https://github.com/adobe-research/openflam manually."
+  fi
+  echo "Cloning OpenFLAM repo..."
+  git clone https://github.com/adobe-research/openflam openflam
+fi
+
 if [ ! -d "backend/.venv" ]; then
   "$PYTHON_BIN" -m venv backend/.venv
 fi
@@ -59,6 +70,24 @@ fi
 source backend/.venv/bin/activate
 python -m pip install --upgrade pip
 pip install -r backend/requirements.txt
+
+echo "Installing OpenFLAM dependencies (this may take a while)..."
+pip install -e openflam
+
+MODEL_PATH="openflam_ckpt/open_flam_oct17.pth"
+if [ ! -f "$MODEL_PATH" ]; then
+  read -r -p "Download FLAM model weights (~800MB)? [y/N]: " DOWNLOAD_MODEL
+  if [[ "$DOWNLOAD_MODEL" =~ ^[Yy]$ ]]; then
+    mkdir -p openflam_ckpt
+    if command -v curl >/dev/null 2>&1; then
+      curl -L "https://huggingface.co/kechenadobe/OpenFLAM/resolve/main/open_flam_oct17.pth" -o "$MODEL_PATH"
+    elif command -v wget >/dev/null 2>&1; then
+      wget -O "$MODEL_PATH" "https://huggingface.co/kechenadobe/OpenFLAM/resolve/main/open_flam_oct17.pth"
+    else
+      fail "Neither curl nor wget is available to download the model."
+    fi
+  fi
+fi
 
 cd frontend
 npm install
