@@ -1,6 +1,7 @@
 @echo off
 setlocal
-cd /d %~dp0
+set ROOT=%~dp0
+cd /d %ROOT%
 
 call :kill_port 8000
 call :kill_port 5173
@@ -26,10 +27,17 @@ if errorlevel 1 (
   goto :fail
 )
 
-backend\.venv\Scripts\python.exe -c "import fastapi, uvicorn" >nul 2>nul
+backend\.venv\Scripts\python.exe -c "import fastapi, uvicorn, psutil" >nul 2>nul
 if errorlevel 1 (
-  echo Backend dependencies missing or corrupt. Re-run install.bat.
-  goto :fail
+  echo Backend dependencies missing or corrupt. Reinstalling...
+  cd /d %ROOT%backend
+  call .venv\Scripts\activate.bat
+  pip install -r requirements.txt
+  if errorlevel 1 (
+    echo Backend dependency install failed.
+    goto :fail
+  )
+  cd /d %ROOT%
 )
 
 if not exist frontend\node_modules (

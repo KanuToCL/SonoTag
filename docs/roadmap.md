@@ -1,8 +1,14 @@
 # FLAM Browser App Roadmap
 - Current focus: integrate FLAM inference with streamed audio for live categorization.
 
-## Project Vision
-Deliver a browser-first audio console that lets users pick a microphone, validate live audio input, and continuously categorize sounds via FLAM with clear latency tradeoffs. The experience should feel seamless locally and in production, with an inference service that can scale independently of the UI.
+## Product Vision
+Deliver a modern, browser-first audio console that lets users pick a microphone, validate live audio input, and continuously categorize sounds via FLAM with clear latency tradeoffs. The experience should feel seamless locally and in production, with an inference service that can scale independently of the UI.
+
+### Product Tenets
+- Real-time first: the UI surfaces latency, buffer size, and confidence clearly.
+- Trustworthy diagnostics: show host specs, audio sample rate, and device status.
+- Configurable outputs: users can tune frequency range and display rules.
+- Deployable by default: the browser app is lightweight and stateless.
 
 ## Goals
 - User opens app and sees audio permissions + device dropdown.

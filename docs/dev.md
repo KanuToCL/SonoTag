@@ -42,3 +42,5 @@ set VITE_API_BASE_URL=http://localhost:8000
 ## Notes
 - The backend currently exposes `/system-info` and `/recommend-buffer` with heuristics.
 - FLAM model wiring will follow once the inference service is integrated.
+- The System Snapshot panel shows host specs only when the backend is running.
+- Sample rate is available after starting mic monitoring.
