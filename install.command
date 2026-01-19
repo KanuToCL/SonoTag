@@ -15,8 +15,12 @@ fail() {
 
 trap 'echo "Install failed."; pause_on_error' ERR
 
-PYTHON_BIN="python3"
-if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+PYTHON_BIN=""
+if command -v python3.11 >/dev/null 2>&1; then
+  PYTHON_BIN="python3.11"
+elif command -v python3 >/dev/null 2>&1; then
+  PYTHON_BIN="python3"
+elif command -v python >/dev/null 2>&1; then
   PYTHON_BIN="python"
 fi
 
@@ -26,12 +30,22 @@ fi
 
 if ! "$PYTHON_BIN" - <<'PY'
 import sys
-sys.exit(0 if sys.version_info >= (3, 10) else 1)
+sys.exit(0 if (3, 10) <= sys.version_info < (3, 13) else 1)
 PY
 then
-  echo "Python 3.10+ required. Current:"
+  echo "Python 3.10-3.12 required. Current:"
   "$PYTHON_BIN" -V
-  fail "Python version too old."
+  if command -v brew >/dev/null 2>&1; then
+    read -r -p "Install Python 3.11 via brew? [y/N]: " INSTALL_PY
+    if [[ "$INSTALL_PY" =~ ^[Yy]$ ]]; then
+      brew install python@3.11
+      PYTHON_BIN="python3.11"
+    else
+      fail "Python version not supported."
+    fi
+  else
+    fail "Python version not supported."
+  fi
 fi
 
 if ! command -v npm >/dev/null 2>&1; then

@@ -5,7 +5,7 @@
 - macOS: run `chmod +x *.command`, then `./install.command` and `./run.command`.
 
 ## Prerequisites
-- Python 3.10+
+- Python 3.10-3.12 (3.11 recommended for OpenFLAM). Install scripts can prompt to install 3.11.
 - Node.js 18+ (npm included)
 - Git (for auto-cloning OpenFLAM during install)
 

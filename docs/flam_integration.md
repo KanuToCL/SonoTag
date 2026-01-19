@@ -4,7 +4,7 @@ This document outlines the short-term path to wire OpenFLAM into the backend
 and start local experiments without blocking the UI work.
 
 ## Prerequisites
-- Python 3.10+
+- Python 3.10-3.12 (3.11 recommended for OpenFLAM). Install scripts can prompt to install 3.11.
 - GPU optional but recommended for real-time.
 - OpenFLAM repo cloned in `openflam/`.
 

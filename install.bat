@@ -2,16 +2,10 @@
 setlocal
 cd /d %~dp0
 
-where python >nul 2>nul
+set "PYTHON_EXE="
+set "PYTHON_ARGS="
+call :select_python
 if errorlevel 1 (
-  echo Python not found. Install Python 3.10+ and ensure it is on PATH.
-  goto :fail
-)
-
-python -c "import sys; sys.exit(0 if sys.version_info >= (3,10) else 1)"
-if errorlevel 1 (
-  echo Python 3.10+ required. Current:
-  python -c "import sys; print(sys.version)"
   goto :fail
 )
 
@@ -58,7 +52,7 @@ if not exist openflam\pyproject.toml (
 )
 
 if not exist backend\.venv (
-  python -m venv backend\.venv
+  %PYTHON_EXE% %PYTHON_ARGS% -m venv backend\.venv
 )
 
 call backend\.venv\Scripts\activate.bat
@@ -105,3 +99,44 @@ echo.
 echo Install failed. Review the messages above.
 pause
 exit /b 1
+
+:select_python
+call :try_pylauncher
+if %errorlevel%==0 exit /b 0
+call :try_python
+if %errorlevel%==0 exit /b 0
+call :maybe_install_py311
+if %errorlevel%==0 (
+  call :try_pylauncher
+  if %errorlevel%==0 exit /b 0
+  call :try_python
+  if %errorlevel%==0 exit /b 0
+)
+echo Python 3.10-3.12 not found. Install Python 3.11 and rerun.
+exit /b 1
+
+:try_pylauncher
+where py >nul 2>nul
+if errorlevel 1 exit /b 1
+py -3.11 -c "import sys; sys.exit(0 if sys.version_info[:2]==(3,11) else 1)" >nul 2>nul
+if errorlevel 1 exit /b 1
+set "PYTHON_EXE=py"
+set "PYTHON_ARGS=-3.11"
+exit /b 0
+
+:try_python
+where python >nul 2>nul
+if errorlevel 1 exit /b 1
+python -c "import sys; sys.exit(0 if (3,10) <= sys.version_info < (3,13) else 1)" >nul 2>nul
+if errorlevel 1 exit /b 1
+set "PYTHON_EXE=python"
+set "PYTHON_ARGS="
+exit /b 0
+
+:maybe_install_py311
+where winget >nul 2>nul
+if errorlevel 1 exit /b 1
+set /p INSTALL_PY=Python 3.11 not found. Install via winget? [y/N]:
+if /I not "%INSTALL_PY%"=="y" exit /b 1
+winget install -e --id Python.Python.3.11
+exit /b %errorlevel%
