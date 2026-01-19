@@ -41,4 +41,5 @@ chmod +x *.command
 - OpenFLAM is under a non-commercial license; review before deployment.
 - For more details, see `docs/dev.md`, `docs/roadmap.md`, and
   `docs/flam_integration.md`.
- - The install scripts can optionally download the FLAM model weights.
+- The install scripts can optionally download the FLAM model weights.
+- Install scripts will recreate `backend/.venv` if it was created with an unsupported Python version.

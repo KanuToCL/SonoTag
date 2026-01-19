@@ -9,6 +9,11 @@ if errorlevel 1 (
   goto :fail
 )
 
+call :ensure_venv_python
+if errorlevel 1 (
+  goto :fail
+)
+
 where npm >nul 2>nul
 if errorlevel 1 (
   echo npm not found. Install Node.js 18+ and restart the terminal.
@@ -114,6 +119,17 @@ if %errorlevel%==0 (
 )
 echo Python 3.10-3.12 not found. Install Python 3.11 and rerun.
 exit /b 1
+
+:ensure_venv_python
+if not exist backend\.venv\Scripts\python.exe exit /b 0
+backend\.venv\Scripts\python.exe -c "import sys; sys.exit(0 if (3,10) <= sys.version_info < (3,13) else 1)" >nul 2>nul
+if errorlevel 1 (
+  echo Existing backend\.venv uses an unsupported Python version.
+  echo Recreating backend\.venv with %PYTHON_EXE% %PYTHON_ARGS% ...
+  rmdir /s /q backend\.venv
+  if errorlevel 1 exit /b 1
+)
+exit /b 0
 
 :try_pylauncher
 where py >nul 2>nul

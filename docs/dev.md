@@ -47,3 +47,4 @@ set VITE_API_BASE_URL=http://localhost:8000
 - Sample rate is available after starting mic monitoring.
 - For FLAM integration steps, see `docs/flam_integration.md`.
 - `install.bat` / `install.command` will auto-clone OpenFLAM if missing and can optionally download the model weights.
+- Install scripts will recreate `backend/.venv` if it was created with an unsupported Python version.

@@ -81,6 +81,19 @@ if [ ! -d "backend/.venv" ]; then
   "$PYTHON_BIN" -m venv backend/.venv
 fi
 
+if [ -x "backend/.venv/bin/python" ]; then
+  if ! backend/.venv/bin/python - <<'PY'
+import sys
+sys.exit(0 if (3, 10) <= sys.version_info < (3, 13) else 1)
+PY
+  then
+    echo "Existing backend/.venv uses an unsupported Python version."
+    echo "Recreating backend/.venv with $PYTHON_BIN ..."
+    rm -rf backend/.venv
+    "$PYTHON_BIN" -m venv backend/.venv
+  fi
+fi
+
 source backend/.venv/bin/activate
 python -m pip install --upgrade pip
 pip install -r backend/requirements.txt

@@ -12,7 +12,8 @@ All notable changes to this project will be documented in this file.
 - First-user `README.md` with quick start and architecture overview.
 - FLAM integration guide and a local probe script for experimentation.
 - Install scripts now clone OpenFLAM automatically and can download model weights.
- - Install scripts can prompt to install Python 3.11 when an unsupported version is detected.
+- Install scripts can prompt to install Python 3.11 when an unsupported version is detected.
+- Install scripts now recreate the backend venv if it uses an unsupported Python version.
 ### Changed
 - Hardened install/run scripts with dependency/version checks and port cleanup.
 - Backend system info now reports host CPU and memory details.
