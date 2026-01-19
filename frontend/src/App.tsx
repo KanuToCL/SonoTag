@@ -436,6 +436,47 @@ const getDynamicLabelStyle = (score: number, theme: ThemeColors): React.CSSPrope
   };
 };
 
+/**
+ * Collapsible section header component for Classic view
+ */
+const CollapsibleHeader = ({
+  title,
+  isCollapsed,
+  onToggle,
+}: {
+  title: string;
+  isCollapsed: boolean;
+  onToggle: () => void;
+}) => (
+  <button
+    type="button"
+    onClick={onToggle}
+    style={{
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      width: "100%",
+      background: "transparent",
+      border: "none",
+      padding: 0,
+      cursor: "pointer",
+      color: "inherit",
+    }}
+  >
+    <h2 style={{ margin: 0 }}>{title}</h2>
+    <span
+      style={{
+        fontSize: "12px",
+        color: "var(--muted)",
+        transition: "transform 0.2s ease",
+        transform: isCollapsed ? "rotate(0deg)" : "rotate(180deg)",
+      }}
+    >
+      ▼
+    </span>
+  </button>
+);
+
 // =============================================================================
 // App Component
 // =============================================================================
@@ -479,7 +520,33 @@ const [sortByScore, setSortByScore] = useState<boolean>(true); // Sort by score 
   const [colorTheme, setColorTheme] = useState<ColorTheme>("inferno"); // Visualization color theme
     const [inputMode, setInputMode] = useState<InputMode>("youtube"); // Tab: microphone or youtube
     const [settingsOpen, setSettingsOpen] = useState<boolean>(false); // Settings slide-out panel
-      const [layoutMode, setLayoutMode] = useState<"immersive" | "classic">("immersive"); // Layout toggle
+const [layoutMode, setLayoutMode] = useState<"immersive" | "classic">("immersive"); // Layout toggle
+
+  // Classic view collapsible sections
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
+    audioInput: false,
+    soundCategories: false,
+    inferenceSettings: true, // Start collapsed
+    systemInfo: true, // Start collapsed
+  });
+
+  // Immersive video modal state
+  const [videoModalPosition, setVideoModalPosition] = useState({ x: 20, y: 20 });
+  const [videoModalSize, setVideoModalSize] = useState({ width: 400, height: 280 });
+  const [isDraggingModal, setIsDraggingModal] = useState(false);
+  const [isResizingModal, setIsResizingModal] = useState(false);
+  const dragOffsetRef = useRef({ x: 0, y: 0 });
+  const resizeStartRef = useRef({ width: 0, height: 0, mouseX: 0, mouseY: 0 });
+
+  // Floating labels modal state (immersive mode)
+  const [showLabelsModal, setShowLabelsModal] = useState(false);
+  const [labelsModalPosition, setLabelsModalPosition] = useState({ x: 440, y: 20 });
+  const [isDraggingLabelsModal, setIsDraggingLabelsModal] = useState(false);
+  const labelsModalDragOffsetRef = useRef({ x: 0, y: 0 });
+
+  // Inline search state for video modal
+  const [showVideoModalSearch, setShowVideoModalSearch] = useState(false);
+  const [videoModalSearchUrl, setVideoModalSearchUrl] = useState("");
 
 // YouTube Analysis state
   const [youtubeUrl, setYoutubeUrl] = useState<string>("");
@@ -1337,6 +1404,36 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               {/* Heatmap with Dynamic Labels */}
               <div className="heatmap-section" style={{ height: heatmapHeight }}>
                 <span className="heatmap-label">FLAM Detection</span>
+                <button
+                  type="button"
+                  onClick={() => setShowLabelsModal(!showLabelsModal)}
+                  className="labels-modal-btn"
+                  style={{
+                    position: "absolute",
+                    top: "8px",
+                    right: "230px",
+                    background: showLabelsModal ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.4)",
+                    border: "1px solid rgba(255, 255, 255, 0.1)",
+                    borderRadius: "4px",
+                    padding: "4px 10px",
+                    fontSize: "10px",
+                    color: showLabelsModal ? "var(--text)" : "var(--muted)",
+                    cursor: "pointer",
+                    zIndex: 5,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                  }}
+                  title="Open Labels panel"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                    <line x1="7" y1="7" x2="7.01" y2="7" />
+                  </svg>
+                  Labels
+                </button>
                 <div className="heatmap-canvas-wrap">
                   <canvas
                     ref={heatmapRef}
@@ -1364,63 +1461,558 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
           </div>
         </main>
 
+        {/* Floating Video Modal - draggable and resizable */}
+        {inputMode === "youtube" && youtubeVideo && (
+          <div
+            className="floating-video-modal"
+            style={{
+              position: "fixed",
+              left: videoModalPosition.x,
+              top: videoModalPosition.y,
+              width: videoModalSize.width,
+              height: videoModalSize.height,
+              zIndex: 500,
+              background: "rgba(0, 0, 0, 0.65)",
+              borderRadius: "8px",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.5)",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {/* Drag handle - top bar */}
+            <div
+              className="modal-drag-handle"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setIsDraggingModal(true);
+                dragOffsetRef.current = {
+                  x: e.clientX - videoModalPosition.x,
+                  y: e.clientY - videoModalPosition.y,
+                };
+              }}
+              style={{
+                height: "28px",
+                background: "rgba(15, 21, 32, 0.9)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "0 10px",
+                cursor: "grab",
+                borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
+                flexShrink: 0,
+              }}
+            >
+              <span style={{ fontSize: "11px", color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                {youtubeVideo.title}
+              </span>
+              <div style={{ display: "flex", gap: "6px", alignItems: "center", marginLeft: "8px" }}>
+                {youtubeAnalyzing && (
+                  <span style={{ fontSize: "9px", color: "var(--success)", display: "flex", alignItems: "center", gap: "4px" }}>
+                    <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--success)", animation: "pulse 2s ease infinite" }} />
+                    Live
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowLabelsModal(!showLabelsModal)}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  style={{
+                    background: showLabelsModal ? "rgba(255, 255, 255, 0.1)" : "transparent",
+                    border: "none",
+                    color: showLabelsModal ? "var(--text)" : "var(--muted)",
+                    cursor: "pointer",
+                    fontSize: "12px",
+                    padding: "2px 6px",
+                    borderRadius: "4px",
+                  }}
+                  title="Toggle labels panel"
+                >
+                  Labels
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={() => {
+                    setShowVideoModalSearch(!showVideoModalSearch);
+                    if (!showVideoModalSearch) {
+                      setVideoModalSearchUrl("");
+                    }
+                  }}
+                  style={{
+                    background: showVideoModalSearch ? "rgba(255, 255, 255, 0.1)" : "transparent",
+                    border: "none",
+                    color: showVideoModalSearch ? "var(--text)" : "var(--muted)",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    padding: "2px 4px",
+                    display: "flex",
+                    alignItems: "center",
+                  }}
+                  title="Search new video"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="M21 21l-4.35-4.35" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={() => {
+                    setYoutubeAnalyzing(false);
+                    videoAudioBufferRef.current = [];
+                    if (videoScriptProcessorRef.current) {
+                      videoScriptProcessorRef.current.disconnect();
+                      videoScriptProcessorRef.current = null;
+                    }
+                    if (videoSourceRef.current) {
+                      videoSourceRef.current.disconnect();
+                      videoSourceRef.current = null;
+                    }
+                    if (videoAnalyserRef.current) {
+                      videoAnalyserRef.current.disconnect();
+                      videoAnalyserRef.current = null;
+                    }
+                    if (videoAudioContextRef.current) {
+                      videoAudioContextRef.current.close();
+                      videoAudioContextRef.current = null;
+                    }
+                    if (youtubeVideo) {
+                      cleanupVideo(youtubeVideo.video_id).catch(() => {});
+                    }
+                    setYoutubeVideo(null);
+                  }}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "var(--muted)",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    padding: "2px 4px",
+                  }}
+                  title="Close"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            {/* Inline search input */}
+            {showVideoModalSearch && (
+              <div
+                style={{
+                  padding: "8px 10px",
+                  background: "rgba(15, 21, 32, 0.95)",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
+                  display: "flex",
+                  gap: "8px",
+                  alignItems: "center",
+                }}
+              >
+                <input
+                  type="text"
+                  value={videoModalSearchUrl}
+                  onChange={(e) => setVideoModalSearchUrl(e.target.value)}
+                  onKeyDown={async (e) => {
+                    if (e.key === "Enter" && videoModalSearchUrl.trim()) {
+                      // Clean up current video audio resources
+                      setYoutubeAnalyzing(false);
+                      videoAudioBufferRef.current = [];
+                      if (videoScriptProcessorRef.current) {
+                        videoScriptProcessorRef.current.disconnect();
+                        videoScriptProcessorRef.current = null;
+                      }
+                      if (videoSourceRef.current) {
+                        videoSourceRef.current.disconnect();
+                        videoSourceRef.current = null;
+                      }
+                      if (videoAnalyserRef.current) {
+                        videoAnalyserRef.current.disconnect();
+                        videoAnalyserRef.current = null;
+                      }
+                      if (videoAudioContextRef.current) {
+                        videoAudioContextRef.current.close();
+                        videoAudioContextRef.current = null;
+                      }
+                      if (youtubeVideo) {
+                        cleanupVideo(youtubeVideo.video_id).catch(() => {});
+                      }
+                      // Load new video
+                      setYoutubePreparing(true);
+                      setYoutubeError("");
+                      try {
+                        const result = await prepareYouTubeVideo(videoModalSearchUrl);
+                        setYoutubeVideo(result);
+                        setYoutubeUrl(videoModalSearchUrl);
+                        setShowVideoModalSearch(false);
+                        setVideoModalSearchUrl("");
+                      } catch (err) {
+                        setYoutubeError(err instanceof Error ? err.message : "Failed");
+                      } finally {
+                        setYoutubePreparing(false);
+                      }
+                    }
+                  }}
+                  placeholder="Paste YouTube URL..."
+                  style={{
+                    flex: 1,
+                    background: "rgba(0, 0, 0, 0.4)",
+                    border: "1px solid rgba(255, 255, 255, 0.1)",
+                    borderRadius: "4px",
+                    padding: "6px 10px",
+                    fontSize: "12px",
+                    color: "var(--text)",
+                    outline: "none",
+                  }}
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!videoModalSearchUrl.trim()) return;
+                    // Clean up current video audio resources
+                    setYoutubeAnalyzing(false);
+                    videoAudioBufferRef.current = [];
+                    if (videoScriptProcessorRef.current) {
+                      videoScriptProcessorRef.current.disconnect();
+                      videoScriptProcessorRef.current = null;
+                    }
+                    if (videoSourceRef.current) {
+                      videoSourceRef.current.disconnect();
+                      videoSourceRef.current = null;
+                    }
+                    if (videoAnalyserRef.current) {
+                      videoAnalyserRef.current.disconnect();
+                      videoAnalyserRef.current = null;
+                    }
+                    if (videoAudioContextRef.current) {
+                      videoAudioContextRef.current.close();
+                      videoAudioContextRef.current = null;
+                    }
+                    if (youtubeVideo) {
+                      cleanupVideo(youtubeVideo.video_id).catch(() => {});
+                    }
+                    // Load new video
+                    setYoutubePreparing(true);
+                    setYoutubeError("");
+                    try {
+                      const result = await prepareYouTubeVideo(videoModalSearchUrl);
+                      setYoutubeVideo(result);
+                      setYoutubeUrl(videoModalSearchUrl);
+                      setShowVideoModalSearch(false);
+                      setVideoModalSearchUrl("");
+                    } catch (err) {
+                      setYoutubeError(err instanceof Error ? err.message : "Failed");
+                    } finally {
+                      setYoutubePreparing(false);
+                    }
+                  }}
+                  disabled={youtubePreparing || !videoModalSearchUrl.trim()}
+                  style={{
+                    background: "var(--accent)",
+                    border: "none",
+                    borderRadius: "4px",
+                    padding: "6px 12px",
+                    fontSize: "11px",
+                    color: "#000",
+                    cursor: "pointer",
+                    opacity: youtubePreparing || !videoModalSearchUrl.trim() ? 0.5 : 1,
+                  }}
+                >
+                  {youtubePreparing ? "..." : "Load"}
+                </button>
+              </div>
+            )}
+
+            {/* Video element */}
+            <video
+              ref={videoRef}
+              src={getVideoStreamUrl(youtubeVideo.video_id)}
+              controls
+              crossOrigin="anonymous"
+              style={{
+                width: "100%",
+                flex: 1,
+                background: "#000",
+                display: "block",
+                minHeight: 0,
+              }}
+              onPlay={() => {
+                if (!videoRef.current) return;
+                if (!videoAudioContextRef.current) {
+                  const audioContext = new AudioContext();
+                  const source = audioContext.createMediaElementSource(videoRef.current);
+                  const scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+                  const analyser = audioContext.createAnalyser();
+                  analyser.fftSize = 2048;
+                  analyser.smoothingTimeConstant = 0.8;
+                  source.connect(analyser);
+                  source.connect(scriptProcessor);
+                  scriptProcessor.connect(audioContext.destination);
+                  source.connect(audioContext.destination);
+                  let currentBufferSamples = 0;
+                  scriptProcessor.onaudioprocess = (event) => {
+                    if (!youtubeAnalyzingRef.current) return;
+                    const inputData = event.inputBuffer.getChannelData(0);
+                    const samples = new Float32Array(inputData);
+                    videoAudioBufferRef.current.push(samples);
+                    currentBufferSamples += samples.length;
+                    const currentMaxSamples = audioContext.sampleRate * bufferSecondsRef.current;
+                    if (currentBufferSamples >= currentMaxSamples) {
+                      currentBufferSamples = 0;
+                      classifyVideoBuffer(audioContext.sampleRate);
+                    }
+                  };
+                  videoAudioContextRef.current = audioContext;
+                  videoSourceRef.current = source;
+                  videoScriptProcessorRef.current = scriptProcessor;
+                  videoAnalyserRef.current = analyser;
+                }
+                setYoutubeAnalyzing(true);
+              }}
+              onPause={() => {
+                setYoutubeAnalyzing(false);
+                videoAudioBufferRef.current = [];
+              }}
+              onEnded={() => {
+                setYoutubeAnalyzing(false);
+                videoAudioBufferRef.current = [];
+              }}
+            />
+
+            {/* Resize handle - bottom right corner */}
+            <div
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setIsResizingModal(true);
+                resizeStartRef.current = {
+                  width: videoModalSize.width,
+                  height: videoModalSize.height,
+                  mouseX: e.clientX,
+                  mouseY: e.clientY,
+                };
+              }}
+              style={{
+                position: "absolute",
+                bottom: 0,
+                right: 0,
+                width: "16px",
+                height: "16px",
+                cursor: "nwse-resize",
+                background: "linear-gradient(135deg, transparent 50%, rgba(255,255,255,0.2) 50%)",
+              }}
+            />
+          </div>
+        )}
+
+        {/* Global mouse handlers for drag/resize */}
+        {(isDraggingModal || isResizingModal || isDraggingLabelsModal) && (
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 9999,
+              cursor: isDraggingModal || isDraggingLabelsModal ? "grabbing" : "nwse-resize",
+            }}
+            onMouseMove={(e) => {
+              if (isDraggingModal) {
+                setVideoModalPosition({
+                  x: Math.max(0, Math.min(window.innerWidth - videoModalSize.width, e.clientX - dragOffsetRef.current.x)),
+                  y: Math.max(0, Math.min(window.innerHeight - videoModalSize.height, e.clientY - dragOffsetRef.current.y)),
+                });
+              } else if (isResizingModal) {
+                const deltaX = e.clientX - resizeStartRef.current.mouseX;
+                const deltaY = e.clientY - resizeStartRef.current.mouseY;
+                setVideoModalSize({
+                  width: Math.max(280, Math.min(800, resizeStartRef.current.width + deltaX)),
+                  height: Math.max(200, Math.min(600, resizeStartRef.current.height + deltaY)),
+                });
+              } else if (isDraggingLabelsModal) {
+                setLabelsModalPosition({
+                  x: Math.max(0, Math.min(window.innerWidth - 280, e.clientX - labelsModalDragOffsetRef.current.x)),
+                  y: Math.max(0, Math.min(window.innerHeight - 400, e.clientY - labelsModalDragOffsetRef.current.y)),
+                });
+              }
+            }}
+            onMouseUp={() => {
+              setIsDraggingModal(false);
+              setIsResizingModal(false);
+              setIsDraggingLabelsModal(false);
+            }}
+            onMouseLeave={() => {
+              setIsDraggingModal(false);
+              setIsResizingModal(false);
+              setIsDraggingLabelsModal(false);
+            }}
+          />
+        )}
+
+        {/* Floating Labels Modal */}
+        {showLabelsModal && (
+          <div
+            className="floating-video-modal"
+            style={{
+              position: "fixed",
+              left: labelsModalPosition.x,
+              top: labelsModalPosition.y,
+              width: 280,
+              maxHeight: 500,
+              zIndex: 501,
+              background: "rgba(0, 0, 0, 0.65)",
+              borderRadius: "8px",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.5)",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {/* Drag handle - top bar */}
+            <div
+              className="modal-drag-handle"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setIsDraggingLabelsModal(true);
+                labelsModalDragOffsetRef.current = {
+                  x: e.clientX - labelsModalPosition.x,
+                  y: e.clientY - labelsModalPosition.y,
+                };
+              }}
+              style={{
+                height: "28px",
+                background: "rgba(15, 21, 32, 0.9)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "0 10px",
+                cursor: "grab",
+                borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
+                flexShrink: 0,
+              }}
+            >
+              <span style={{ fontSize: "11px", color: "var(--muted)" }}>
+                  Labels
+                </span>
+              <button
+                type="button"
+                onClick={() => setShowLabelsModal(false)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--muted)",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  padding: "2px 4px",
+                }}
+                title="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Labels list */}
+            <div style={{
+              flex: 1,
+              overflowY: "auto",
+              padding: "8px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "6px",
+            }}>
+              {(() => {
+                const displayScores = Object.keys(classificationScores).length > 0
+                  ? (normalizeScores
+                      ? normalizeScoresMinMax(classificationScores)
+                      : clampScoresToPositive(classificationScores))
+                  : null;
+
+                let sortedPrompts = [...prompts];
+                if (Object.keys(classificationScores).length > 0) {
+                  sortedPrompts.sort((a, b) => {
+                    const scoreA = classificationScores[a] ?? -Infinity;
+                    const scoreB = classificationScores[b] ?? -Infinity;
+                    return scoreB - scoreA;
+                  });
+                }
+
+                return sortedPrompts.map((prompt) => {
+                  const rawScore = classificationScores[prompt];
+                  const hasScore = rawScore !== undefined;
+                  let displayIntensity = 0;
+                  if (hasScore && displayScores) {
+                    displayIntensity = displayScores[prompt] ?? 0;
+                  }
+                  const isTop = hasScore && rawScore === Math.max(...Object.values(classificationScores));
+
+                  return (
+                    <div
+                      key={prompt}
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "3px",
+                        padding: "6px 8px",
+                        background: isTop ? `${getColorFromStops(0.8, COLOR_THEMES[colorTheme].stops)}22` : "rgba(255,255,255,0.03)",
+                        borderRadius: "4px",
+                        border: isTop ? `1px solid ${getColorFromStops(0.8, COLOR_THEMES[colorTheme].stops)}66` : "1px solid transparent",
+                      }}
+                    >
+                      <span style={{
+                        color: isTop ? getColorFromStops(0.9, COLOR_THEMES[colorTheme].stops) : "#aaa",
+                        fontWeight: isTop ? 600 : 400,
+                        fontSize: "11px",
+                      }}>
+                        {prompt}
+                      </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <div style={{
+                          flex: 1,
+                          height: "4px",
+                          background: "#1a1a1a",
+                          borderRadius: "2px",
+                          overflow: "hidden",
+                        }}>
+                          <div style={{
+                            width: `${displayIntensity * 100}%`,
+                            height: "100%",
+                            background: getColorFromStops(displayIntensity, COLOR_THEMES[colorTheme].stops),
+                            transition: "width 0.3s ease",
+                          }} />
+                        </div>
+                        <span style={{
+                          fontFamily: "monospace",
+                          fontSize: "9px",
+                          color: hasScore ? "#fff" : "#555",
+                          minWidth: "36px",
+                          textAlign: "right",
+                        }}>
+                          {hasScore ? (rawScore > 0 ? "+" : "") + rawScore.toFixed(2) : "---"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+        )}
+
         {/* Bottom Controls Bar */}
         <footer className="immersive-footer">
           {/* Video Player / Mic Status */}
           <div className="footer-section">
             {inputMode === "youtube" && youtubeVideo ? (
-              <div className="video-player-mini">
-                <video
-                  ref={videoRef}
-                  src={getVideoStreamUrl(youtubeVideo.video_id)}
-                  controls
-                  crossOrigin="anonymous"
-                  onPlay={() => {
-                    if (!videoRef.current) return;
-                    if (!videoAudioContextRef.current) {
-                      const audioContext = new AudioContext();
-                      const source = audioContext.createMediaElementSource(videoRef.current);
-                      const scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
-                      const analyser = audioContext.createAnalyser();
-                      analyser.fftSize = 2048;
-                      analyser.smoothingTimeConstant = 0.8;
-                      source.connect(analyser);
-                      source.connect(scriptProcessor);
-                      scriptProcessor.connect(audioContext.destination);
-                      source.connect(audioContext.destination);
-                      let currentBufferSamples = 0;
-                      scriptProcessor.onaudioprocess = (event) => {
-                        if (!youtubeAnalyzingRef.current) return;
-                        const inputData = event.inputBuffer.getChannelData(0);
-                        const samples = new Float32Array(inputData);
-                        videoAudioBufferRef.current.push(samples);
-                        currentBufferSamples += samples.length;
-                        const currentMaxSamples = audioContext.sampleRate * bufferSecondsRef.current;
-                        if (currentBufferSamples >= currentMaxSamples) {
-                          currentBufferSamples = 0;
-                          classifyVideoBuffer(audioContext.sampleRate);
-                        }
-                      };
-                      videoAudioContextRef.current = audioContext;
-                      videoSourceRef.current = source;
-                      videoScriptProcessorRef.current = scriptProcessor;
-                      videoAnalyserRef.current = analyser;
-                    }
-                    setYoutubeAnalyzing(true);
-                  }}
-                  onPause={() => {
-                    setYoutubeAnalyzing(false);
-                    videoAudioBufferRef.current = [];
-                  }}
-                  onEnded={() => {
-                    setYoutubeAnalyzing(false);
-                    videoAudioBufferRef.current = [];
-                  }}
-                />
-                <div className="video-info">
-                  <span className="video-title">{youtubeVideo.title}</span>
-                  {youtubeAnalyzing && <span className="video-status">● Analyzing...</span>}
-                </div>
+              // Video is playing in floating modal - show minimal status
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ fontSize: "12px", color: "var(--muted)" }}>📺 Video playing</span>
+                {youtubeAnalyzing && (
+                  <span style={{ fontSize: "11px", color: "var(--success)" }}>● Analyzing</span>
+                )}
               </div>
             ) : inputMode === "youtube" ? (
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -2124,8 +2716,13 @@ onPause={() => {
 
           {/* Shared: Prompts Configuration */}
           <section className="block">
-            <h2>Sound Categories</h2>
-            <div className="stack">
+            <CollapsibleHeader
+              title="Sound Categories"
+              isCollapsed={collapsedSections.soundCategories}
+              onToggle={() => setCollapsedSections(prev => ({ ...prev, soundCategories: !prev.soundCategories }))}
+            />
+            {!collapsedSections.soundCategories && (
+            <div className="stack" style={{ marginTop: "14px" }}>
               <label className="label" htmlFor="prompt-input">
                 Sound categories to detect (semicolon-separated)
               </label>
@@ -2210,72 +2807,9 @@ onPause={() => {
                     }
                   }}
                 />
-                <label htmlFor="music-decomposition-toggle" style={{ fontSize: "0.85rem", color: "#9aa7bd" }}>
-                  Music Decomposition ({MUSIC_DECOMPOSITION_PROMPTS.length} instruments)
+                <label htmlFor="music-decomposition-toggle" style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
+                  🎵 Music decomposition mode
                 </label>
-              </div>
-
-              {/* Preset buttons for common use cases */}
-              <div style={{ marginTop: "0.75rem" }}>
-                <div className="section-label" style={{ marginBottom: "0.5rem" }}>Quick Presets</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
-                  <button
-                    type="button"
-                    className="ghost"
-                    onClick={() => {
-                      setPrompts(ACTION_MOVIE_PROMPTS);
-                      setPromptInput(ACTION_MOVIE_PROMPTS.join("; "));
-                      setClassificationScores({});
-                      setMusicDecomposition(false);
-                      setScoresExpanded(false);
-                    }}
-                    style={{ fontSize: "0.75rem", padding: "0.4rem 0.75rem" }}
-                  >
-                    🎬 Action Movie ({ACTION_MOVIE_PROMPTS.length})
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost"
-                    onClick={() => {
-                      setPrompts(SPORTS_PROMPTS);
-                      setPromptInput(SPORTS_PROMPTS.join("; "));
-                      setClassificationScores({});
-                      setMusicDecomposition(false);
-                      setScoresExpanded(false);
-                    }}
-                    style={{ fontSize: "0.75rem", padding: "0.4rem 0.75rem" }}
-                  >
-                    🏈 Sports ({SPORTS_PROMPTS.length})
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost"
-                    onClick={() => {
-                      setPrompts(MUSIC_DECOMPOSITION_PROMPTS);
-                      setPromptInput(MUSIC_DECOMPOSITION_PROMPTS.join("; "));
-                      setClassificationScores({});
-                      setMusicDecomposition(true);
-                      setScoresExpanded(false);
-                    }}
-                    style={{ fontSize: "0.75rem", padding: "0.4rem 0.75rem" }}
-                  >
-                    🎵 Music ({MUSIC_DECOMPOSITION_PROMPTS.length})
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost"
-                    onClick={() => {
-                      setPrompts(DEFAULT_PROMPTS);
-                      setPromptInput(DEFAULT_PROMPTS.join("; "));
-                      setClassificationScores({});
-                      setMusicDecomposition(false);
-                      setScoresExpanded(false);
-                    }}
-                    style={{ fontSize: "0.75rem", padding: "0.4rem 0.75rem" }}
-                  >
-                    🔄 Default ({DEFAULT_PROMPTS.length})
-                  </button>
-                </div>
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.5rem" }}>
@@ -2307,11 +2841,17 @@ onPause={() => {
               </div>
               {classifyError && <p className="error">{classifyError}</p>}
             </div>
+            )}
           </section>
 
           <section className="block">
-            <h2>Inference Settings</h2>
-            <div className="stack">
+            <CollapsibleHeader
+              title="Inference Settings"
+              isCollapsed={collapsedSections.inferenceSettings}
+              onToggle={() => setCollapsedSections(prev => ({ ...prev, inferenceSettings: !prev.inferenceSettings }))}
+            />
+            {!collapsedSections.inferenceSettings && (
+            <div className="stack" style={{ marginTop: "14px" }}>
               <label className="label" htmlFor="buffer-slider">
                 Audio buffer: {bufferSeconds}s
               </label>
@@ -2408,18 +2948,24 @@ onPause={() => {
                 onChange={(e) => setSlideSpeed(Number(e.target.value))}
                 style={{ width: "100%" }}
               />
-              <div className="info-line" style={{ fontSize: "0.75rem" }}>
-                <span>{MIN_SLIDE_SPEED} (slower/zoomed)</span>
-                <span>{MAX_SLIDE_SPEED} (faster/compressed)</span>
+                <div className="info-line" style={{ fontSize: "0.75rem" }}>
+                  <span>{MIN_SLIDE_SPEED} (slower/zoomed)</span>
+                  <span>{MAX_SLIDE_SPEED} (faster/compressed)</span>
+                </div>
               </div>
-            </div>
-          </section>
+              )}
+            </section>
 
 <section className="block">
-            <h2>System snapshot</h2>
-            <div className="stack">
-              <div className="section-label">Host (backend)</div>
-              <div className="info-line">
+              <CollapsibleHeader
+                title="System snapshot"
+                isCollapsed={collapsedSections.systemInfo}
+                onToggle={() => setCollapsedSections(prev => ({ ...prev, systemInfo: !prev.systemInfo }))}
+              />
+              {!collapsedSections.systemInfo && (
+              <div className="stack" style={{ marginTop: "14px" }}>
+                <div className="section-label">Host (backend)</div>
+                <div className="info-line">
                 <span>CPU threads</span>
                 <span>{formatValue(hostCpuLogical)}</span>
               </div>
@@ -2507,6 +3053,7 @@ onPause={() => {
               </div>
               {backendError && <p className="muted">{backendError}</p>}
             </div>
+            )}
           </section>
         </aside>
 
