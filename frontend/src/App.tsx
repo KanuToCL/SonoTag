@@ -596,6 +596,19 @@ const [layoutMode, setLayoutMode] = useState<"immersive" | "classic">("immersive
   const [hoveredCdfPos, setHoveredCdfPos] = useState<{ x: number; y: number } | null>(null); // Position for CDF tooltip
   const [hoveredHistogramBin, setHoveredHistogramBin] = useState<{ count: number; x: number; y: number } | null>(null); // Hovered histogram bin
 
+  // Webcam modal state (microphone mode)
+  const [showWebcamModal, setShowWebcamModal] = useState(false);
+  const [webcamModalPosition, setWebcamModalPosition] = useState({ x: Math.max(20, (window.innerWidth - 370) / 2), y: Math.max(20, (window.innerHeight - 320) / 2 - 50) });
+  const [webcamModalSize, setWebcamModalSize] = useState({ width: 320, height: 240 });
+  const [isDraggingWebcamModal, setIsDraggingWebcamModal] = useState(false);
+  const [isResizingWebcamModal, setIsResizingWebcamModal] = useState(false);
+  const webcamDragOffsetRef = useRef({ x: 0, y: 0 });
+  const webcamResizeStartRef = useRef({ width: 0, height: 0, mouseX: 0, mouseY: 0 });
+  const [webcamDevices, setWebcamDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedWebcamId, setSelectedWebcamId] = useState<string>("");
+  const [webcamError, setWebcamError] = useState<string>("");
+  const [webcamActive, setWebcamActive] = useState(false);
+
 // YouTube Analysis state
   const [youtubeUrl, setYoutubeUrl] = useState<string>("");
   const [youtubePreparing, setYoutubePreparing] = useState<boolean>(false);
@@ -636,6 +649,10 @@ const videoRef = useRef<HTMLVideoElement>(null);
   const frameScoresRef = useRef<Record<string, number[]>>({}); // Frame-wise scores for temporal heatmap
   const promptsRef = useRef<string[]>(DEFAULT_PROMPTS);
   const normalizeScoresRef = useRef<boolean>(false);
+
+  // Webcam refs
+  const webcamRef = useRef<HTMLVideoElement>(null);
+  const webcamStreamRef = useRef<MediaStream | null>(null);
 
   // Inference timing
   const [lastInferenceTime, setLastInferenceTime] = useState<number | null>(null);
@@ -829,6 +846,69 @@ if (!youtubeAnalyzing || !heatmapRef.current || !spectrogramRef.current) return;
     }
   }, [selectedDeviceId]);
 
+  // Refresh webcam devices
+  const refreshWebcamDevices = useCallback(async (): Promise<void> => {
+    if (!navigator.mediaDevices?.enumerateDevices) {
+      return;
+    }
+
+    try {
+      const allDevices = await navigator.mediaDevices.enumerateDevices();
+      const videoInputs = allDevices.filter(
+        (device) => device.kind === "videoinput"
+      );
+      setWebcamDevices(videoInputs);
+      if (!selectedWebcamId && videoInputs.length > 0) {
+        setSelectedWebcamId(videoInputs[0].deviceId);
+      }
+    } catch {
+      setWebcamError("Failed to enumerate video devices.");
+    }
+  }, [selectedWebcamId]);
+
+  // Start webcam capture
+  const startWebcam = useCallback(async (): Promise<void> => {
+    try {
+      setWebcamError("");
+
+      // Stop any existing webcam stream
+      if (webcamStreamRef.current) {
+        webcamStreamRef.current.getTracks().forEach(track => track.stop());
+        webcamStreamRef.current = null;
+      }
+
+      const constraints: MediaStreamConstraints = {
+        video: selectedWebcamId ? { deviceId: { exact: selectedWebcamId } } : true,
+        audio: false, // No audio to avoid interference with mic capture
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      webcamStreamRef.current = stream;
+
+      setWebcamActive(true);
+      setShowWebcamModal(true);
+
+      // Refresh devices to get proper labels after permission granted
+      await refreshWebcamDevices();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to access webcam";
+      setWebcamError(message);
+      setWebcamActive(false);
+    }
+  }, [selectedWebcamId, refreshWebcamDevices]);
+
+  // Stop webcam capture
+  const stopWebcam = useCallback((): void => {
+    if (webcamStreamRef.current) {
+      webcamStreamRef.current.getTracks().forEach(track => track.stop());
+      webcamStreamRef.current = null;
+    }
+    if (webcamRef.current) {
+      webcamRef.current.srcObject = null;
+    }
+    setWebcamActive(false);
+  }, []);
+
   // Keep refs in sync with state for draw loop
   // ---------------------------------------------------------------------------
   useEffect(() => {
@@ -861,6 +941,13 @@ useEffect(() => {
   useEffect(() => {
     colorThemeRef.current = colorTheme;
   }, [colorTheme]);
+
+  // Set webcam srcObject when video element is mounted and stream is available
+  useEffect(() => {
+    if (webcamActive && webcamRef.current && webcamStreamRef.current) {
+      webcamRef.current.srcObject = webcamStreamRef.current;
+    }
+  }, [webcamActive]);
 
 // ---------------------------------------------------------------------------
   // Classification Logic
@@ -1275,15 +1362,21 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
   // ---------------------------------------------------------------------------
   useEffect(() => {
     refreshDevices();
+    refreshWebcamDevices();
     if (!navigator.mediaDevices?.addEventListener) {
       return undefined;
     }
 
-    navigator.mediaDevices.addEventListener("devicechange", refreshDevices);
-    return () => {
-      navigator.mediaDevices.removeEventListener("devicechange", refreshDevices);
+    const handleDeviceChange = () => {
+      refreshDevices();
+      refreshWebcamDevices();
     };
-  }, [refreshDevices]);
+
+    navigator.mediaDevices.addEventListener("devicechange", handleDeviceChange);
+    return () => {
+      navigator.mediaDevices.removeEventListener("devicechange", handleDeviceChange);
+    };
+  }, [refreshDevices, refreshWebcamDevices]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1373,6 +1466,23 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
       stopMonitoring();
     };
   }, [stopMonitoring]);
+
+  // Cleanup webcam when switching away from microphone mode or on unmount
+  useEffect(() => {
+    if (inputMode !== "microphone" && webcamActive) {
+      stopWebcam();
+    }
+  }, [inputMode, webcamActive, stopWebcam]);
+
+  // Cleanup webcam on unmount
+  useEffect(() => {
+    return () => {
+      if (webcamStreamRef.current) {
+        webcamStreamRef.current.getTracks().forEach(track => track.stop());
+        webcamStreamRef.current = null;
+      }
+    };
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Derived Display Values
@@ -1562,6 +1672,34 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                     >
                       Prompts
                     </button>
+
+                    {inputMode === "microphone" && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (webcamActive) {
+                            stopWebcam();
+                          } else {
+                            startWebcam();
+                          }
+                        }}
+                        style={{
+                          padding: "8px 16px",
+                          fontSize: "13px",
+                          fontWeight: 500,
+                          color: webcamActive ? "var(--accent)" : "var(--muted)",
+                          background: webcamActive ? "rgba(255, 122, 61, 0.2)" : "rgba(15, 21, 32, 0.8)",
+                          border: "1px solid var(--border)",
+                          borderRadius: "8px",
+                          cursor: "pointer",
+                          transition: "all 0.2s ease",
+                          width: "100%",
+                        }}
+                        title={webcamActive ? "Stop Camera" : "Start Camera"}
+                      >
+                        {webcamActive ? "Stop Camera" : "Camera"}
+                      </button>
+                    )}
 
                     {inputMode === "youtube" && youtubeVideo && (
                       <button
@@ -1988,8 +2126,202 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
           </div>
         )}
 
+        {/* Floating Webcam Modal - microphone mode only */}
+        {inputMode === "microphone" && webcamActive && (
+          <div
+            className="floating-video-modal floating-webcam-modal"
+            style={{
+              position: "fixed",
+              left: webcamModalPosition.x,
+              top: webcamModalPosition.y,
+              width: webcamModalSize.width,
+              height: webcamModalSize.height,
+              zIndex: 500,
+              background: "rgba(15, 20, 30, 0.55)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              visibility: showWebcamModal ? "visible" : "hidden",
+              opacity: showWebcamModal ? 1 : 0,
+              transition: "opacity 0.2s ease, visibility 0.2s ease",
+              borderRadius: "8px",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4)",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {/* Drag handle - top bar */}
+            <div
+              className="modal-drag-handle"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setIsDraggingWebcamModal(true);
+                webcamDragOffsetRef.current = {
+                  x: e.clientX - webcamModalPosition.x,
+                  y: e.clientY - webcamModalPosition.y,
+                };
+              }}
+              style={{
+                height: "28px",
+                background: "transparent",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "0 10px",
+                cursor: "grab",
+                borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
+                flexShrink: 0,
+              }}
+            >
+              <span style={{ fontSize: "11px", color: "var(--muted)" }}>
+                Webcam
+              </span>
+              <div style={{ display: "flex", gap: "6px", alignItems: "center", marginLeft: "8px" }}>
+                {webcamActive && (
+                  <span style={{ fontSize: "9px", color: "var(--success)", display: "flex", alignItems: "center", gap: "4px" }}>
+                    <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--success)", animation: "pulse 2s ease infinite" }} />
+                    Live
+                  </span>
+                )}
+                {/* Camera device selector */}
+                {webcamDevices.length > 1 && (
+                  <select
+                    value={selectedWebcamId}
+                    onChange={async (e) => {
+                      e.stopPropagation();
+                      setSelectedWebcamId(e.target.value);
+                      // Restart webcam with new device
+                      if (webcamActive) {
+                        stopWebcam();
+                        setTimeout(() => startWebcam(), 100);
+                      }
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    style={{
+                      background: "rgba(0, 0, 0, 0.4)",
+                      border: "1px solid rgba(255, 255, 255, 0.1)",
+                      borderRadius: "4px",
+                      padding: "2px 4px",
+                      fontSize: "9px",
+                      color: "var(--text)",
+                      cursor: "pointer",
+                      maxWidth: "100px",
+                    }}
+                  >
+                    {webcamDevices.map((device, index) => (
+                      <option key={device.deviceId || index} value={device.deviceId}>
+                        {device.label || `Camera ${index + 1}`}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {/* Hide/Show toggle */}
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={() => setShowWebcamModal(!showWebcamModal)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "var(--muted)",
+                    cursor: "pointer",
+                    fontSize: "12px",
+                    padding: "2px 4px",
+                  }}
+                  title={showWebcamModal ? "Hide" : "Show"}
+                >
+                  {showWebcamModal ? "−" : "+"}
+                </button>
+                {/* Close button */}
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={() => {
+                    stopWebcam();
+                  }}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "var(--muted)",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    padding: "2px 4px",
+                  }}
+                  title="Close"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            {/* Webcam video element */}
+            <video
+              ref={(el) => {
+                webcamRef.current = el;
+                // Only set srcObject if not already set (prevents flashing on re-renders)
+                if (el && webcamStreamRef.current && el.srcObject !== webcamStreamRef.current) {
+                  el.srcObject = webcamStreamRef.current;
+                }
+              }}
+              autoPlay
+              playsInline
+              muted
+              style={{
+                width: "100%",
+                flex: 1,
+                background: "#000",
+                display: "block",
+                objectFit: "cover",
+                transform: "scaleX(-1)", // Mirror horizontally for natural UX
+              }}
+            />
+
+            {/* Webcam error display */}
+            {webcamError && (
+              <div style={{
+                position: "absolute",
+                bottom: "8px",
+                left: "8px",
+                right: "8px",
+                padding: "6px 10px",
+                background: "rgba(255, 107, 107, 0.9)",
+                borderRadius: "4px",
+                fontSize: "11px",
+                color: "#fff",
+              }}>
+                {webcamError}
+              </div>
+            )}
+
+            {/* Resize handle */}
+            <div
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsResizingWebcamModal(true);
+                webcamResizeStartRef.current = {
+                  width: webcamModalSize.width,
+                  height: webcamModalSize.height,
+                  mouseX: e.clientX,
+                  mouseY: e.clientY,
+                };
+              }}
+              style={{
+                position: "absolute",
+                bottom: 0,
+                right: 0,
+                width: "16px",
+                height: "16px",
+                cursor: "nwse-resize",
+                background: "linear-gradient(135deg, transparent 50%, rgba(255,255,255,0.2) 50%)",
+              }}
+            />
+          </div>
+        )}
+
         {/* Global mouse handlers for drag/resize */}
-        {(isDraggingModal || isResizingModal || isDraggingLabelsModal || isResizingLabelsModal || isDraggingPromptsModal || isResizingPromptsModal || isDraggingStatsModal) && (
+        {(isDraggingModal || isResizingModal || isDraggingLabelsModal || isResizingLabelsModal || isDraggingPromptsModal || isResizingPromptsModal || isDraggingStatsModal || isDraggingWebcamModal || isResizingWebcamModal) && (
           <div
             style={{
               position: "fixed",
@@ -1998,7 +2330,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               right: 0,
               bottom: 0,
               zIndex: 9999,
-              cursor: isDraggingModal || isDraggingLabelsModal || isDraggingPromptsModal || isDraggingStatsModal ? "grabbing" : "ns-resize",
+              cursor: isDraggingModal || isDraggingLabelsModal || isDraggingPromptsModal || isDraggingStatsModal || isDraggingWebcamModal ? "grabbing" : "nwse-resize",
             }}
             onMouseMove={(e) => {
               if (isDraggingModal) {
@@ -2034,6 +2366,18 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                   x: Math.max(0, Math.min(window.innerWidth - 420, e.clientX - statsModalDragOffsetRef.current.x)),
                   y: Math.max(0, Math.min(window.innerHeight - 400, e.clientY - statsModalDragOffsetRef.current.y)),
                 });
+              } else if (isDraggingWebcamModal) {
+                setWebcamModalPosition({
+                  x: Math.max(0, Math.min(window.innerWidth - webcamModalSize.width, e.clientX - webcamDragOffsetRef.current.x)),
+                  y: Math.max(0, Math.min(window.innerHeight - webcamModalSize.height, e.clientY - webcamDragOffsetRef.current.y)),
+                });
+              } else if (isResizingWebcamModal) {
+                const deltaX = e.clientX - webcamResizeStartRef.current.mouseX;
+                const deltaY = e.clientY - webcamResizeStartRef.current.mouseY;
+                setWebcamModalSize({
+                  width: Math.max(200, Math.min(640, webcamResizeStartRef.current.width + deltaX)),
+                  height: Math.max(150, Math.min(480, webcamResizeStartRef.current.height + deltaY)),
+                });
               }
             }}
             onMouseUp={() => {
@@ -2044,6 +2388,8 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               setIsDraggingPromptsModal(false);
               setIsResizingPromptsModal(false);
               setIsDraggingStatsModal(false);
+              setIsDraggingWebcamModal(false);
+              setIsResizingWebcamModal(false);
             }}
             onMouseLeave={() => {
               setIsDraggingModal(false);
@@ -2053,6 +2399,8 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               setIsDraggingPromptsModal(false);
               setIsResizingPromptsModal(false);
               setIsDraggingStatsModal(false);
+              setIsDraggingWebcamModal(false);
+              setIsResizingWebcamModal(false);
             }}
           />
         )}
@@ -3255,6 +3603,23 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                 <div style={{ width: "60px", height: "6px", background: "rgba(10,16,24,0.8)", borderRadius: "3px", overflow: "hidden" }}>
                   <div style={{ width: `${levelPercent}%`, height: "100%", background: "linear-gradient(90deg, #ff7a3d, #2ad1ff)" }} />
                 </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (webcamActive) {
+                      stopWebcam();
+                    } else {
+                      startWebcam();
+                    }
+                  }}
+                  className="ghost"
+                  style={{
+                    padding: "6px 12px",
+                    fontSize: "12px",
+                  }}
+                >
+                  {webcamActive ? "Stop Camera" : "Camera"}
+                </button>
               </div>
             )}
           </div>
@@ -3840,7 +4205,33 @@ onPause={() => {
           {inputMode === "microphone" && (
             <>
           <section className="block">
-            <h2>Microphone Capture</h2>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+              <h2 style={{ margin: 0 }}>Microphone Capture</h2>
+              <button
+                type="button"
+                onClick={() => {
+                  if (webcamActive) {
+                    stopWebcam();
+                  } else {
+                    startWebcam();
+                  }
+                }}
+                style={{
+                  padding: "6px 12px",
+                  background: webcamActive ? "rgba(255, 122, 61, 0.2)" : "rgba(15, 21, 32, 0.8)",
+                  border: "1px solid",
+                  borderColor: webcamActive ? "var(--accent)" : "rgba(255, 255, 255, 0.1)",
+                  borderRadius: "6px",
+                  color: webcamActive ? "var(--accent)" : "var(--muted)",
+                  cursor: "pointer",
+                  fontSize: "12px",
+                  transition: "all 0.2s ease",
+                }}
+                title={webcamActive ? "Stop Webcam" : "Start Webcam"}
+              >
+                {webcamActive ? "Stop Camera" : "Camera"}
+              </button>
+            </div>
             <div className="stack">
               <label className="label" htmlFor="device-select">
                 Microphone

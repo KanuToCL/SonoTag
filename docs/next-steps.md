@@ -114,7 +114,209 @@ curl -X POST http://localhost:8000/classify-local \
 
 ## 🎯 Immediate Priorities
 
-### 1. ~~Loudness Relabel Postprocessing (Paper Section C.4)~~
+### 1. YouTube Deployment Options
+**Status**: ⚠️ Decision Required
+**Effort**: Varies by option
+
+The current YouTube video handling downloads videos to the server, which is **incompatible with Vercel** (serverless).
+
+#### Current Architecture (Problems)
+```
+Frontend → /prepare-youtube-video → yt-dlp downloads to /tmp → /stream-video/{id}
+```
+
+| Issue | Why it's a problem on Vercel |
+|-------|------------------------------|
+| **Serverless timeouts** | 10s (free) to 60s (pro) max. Video downloads can exceed this. |
+| **No persistent filesystem** | `/tmp` is ephemeral, cleared between invocations |
+| **Memory limits** | 1GB max per function. Large videos will fail. |
+| **yt-dlp binary** | Needs bundling, tricky on serverless |
+| **YouTube ToS** | Downloading/re-hosting is technically against ToS |
+
+#### Option 1: Direct YouTube Embed (Simplest) ⭐ Recommended for Vercel
+- Use YouTube IFrame API with `origin` parameter
+- Extract audio from `<video>` element using Web Audio API (already implemented!)
+- No downloading, no ToS issues, works on Vercel
+- ⚠️ Limitation: Some videos block embedding, CORS can block audio extraction
+
+**How It Works**:
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Browser (your-app.vercel.app)                                  │
+│  ┌────────────────────┐    ┌─────────────────────────────────┐  │
+│  │  YouTube IFrame    │    │  Your React App                 │  │
+│  │  ┌──────────────┐  │    │                                 │  │
+│  │  │ <video>      │──┼────┼──► Web Audio API                │  │
+│  │  │ (embedded)   │  │    │    createMediaElementSource()  │  │
+│  │  └──────────────┘  │    │         │                       │  │
+│  └────────────────────┘    │         ▼                       │  │
+│                            │    ScriptProcessor / Worklet    │  │
+│                            │         │                       │  │
+│                            │         ▼                       │  │
+│                            │    PCM Audio Chunks → FLAM API  │  │
+│                            └─────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**YouTube IFrame API Setup**:
+```html
+<!-- Load the IFrame Player API -->
+<script src="https://www.youtube.com/iframe_api"></script>
+
+<!-- Player container -->
+<div id="player"></div>
+```
+
+```javascript
+// Initialize player
+const player = new YT.Player('player', {
+  videoId: 'VIDEO_ID',
+  playerVars: {
+    origin: window.location.origin,  // Required for API access
+    enablejsapi: 1,                  // Enable JavaScript API
+    controls: 1,
+  },
+  events: {
+    onReady: onPlayerReady,
+    onStateChange: onPlayerStateChange,
+  }
+});
+```
+
+**CORS Limitation Explained**:
+
+CORS (Cross-Origin Resource Sharing) is a browser security feature that restricts how resources from one origin can interact with resources from another origin.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  The CORS Problem with YouTube Audio Extraction                 │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Your App (https://your-app.vercel.app)                        │
+│       │                                                         │
+│       │  createMediaElementSource(videoElement)                │
+│       │                                                         │
+│       ▼                                                         │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  Browser Security Check:                                 │   │
+│  │                                                          │   │
+│  │  "Is the media from the same origin as the page?"       │   │
+│  │                                                          │   │
+│  │  Media source: https://googlevideo.com/...              │   │
+│  │  Page origin:  https://your-app.vercel.app              │   │
+│  │                                                          │   │
+│  │  ❌ DIFFERENT ORIGINS → CORS blocks audio data access   │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  Result: MediaElementAudioSourceNode connects but outputs      │
+│          SILENCE (all zeros) to protect user privacy           │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Why This Happens**:
+- YouTube videos are served from `googlevideo.com` CDN
+- Your page is served from `your-app.vercel.app`
+- Browser treats cross-origin media as "tainted"
+- Web Audio API cannot read sample data from tainted media
+- The audio PLAYS in the `<video>` element, but you can't ANALYZE it
+
+**When CORS Blocks Audio**:
+| Scenario | Audio Plays? | Can Analyze? |
+|----------|-------------|--------------|
+| Same-origin video (your server) | ✅ Yes | ✅ Yes |
+| YouTube embed (IFrame) | ✅ Yes | ❌ No* |
+| Cross-origin with `crossorigin="anonymous"` + CORS headers | ✅ Yes | ✅ Yes |
+| YouTube direct URL (no CORS headers) | ✅ Yes | ❌ No |
+
+*YouTube does NOT send CORS headers that allow audio extraction.
+
+**Workarounds**:
+
+1. **Backend Proxy (Current Approach)** - Download video server-side, serve with CORS headers
+   - ✅ Works reliably
+   - ❌ Not Vercel-compatible (needs persistent storage)
+
+2. **Audio Capture via Screen/Tab Sharing** - Use `getDisplayMedia()` with audio
+   - ✅ Bypasses CORS entirely
+   - ❌ Requires user to grant screen share permission
+   - ❌ Captures ALL tab audio, not just video
+
+3. **Browser Extension** - Extensions can bypass CORS restrictions
+   - ✅ Full access to audio data
+   - ❌ Users must install extension
+   - ❌ Not a web-only solution
+
+4. **Accept the Limitation** - Use YouTube for playback, mic for analysis
+   - ✅ No CORS issues
+   - ❌ Picks up room audio, not clean video audio
+
+**Recommendation for Vercel**:
+The cleanest Vercel-compatible approach is **Option 3 (Separate Backend)** where:
+- Frontend on Vercel (React app)
+- Backend on Railway/Render (FastAPI + yt-dlp)
+- Backend serves video with proper CORS headers
+- Full audio extraction works
+
+If you MUST be Vercel-only, the **Screen/Tab Sharing workaround** is the most reliable way to capture YouTube audio without a backend.
+
+**Implementation**:
+- [ ] Add YouTube IFrame API to index.html
+- [ ] Create YouTubePlayer component with API integration
+- [ ] Attempt audio extraction with `createMediaElementSource()`
+- [ ] Detect CORS failure (silent output) and show user message
+- [ ] Offer fallback: "Use microphone to analyze video audio" or "Share tab audio"
+- [ ] Test with `youtube-nocookie.com` embed URLs (may have different CORS behavior)
+
+#### Option 2: Proxy Stream URLs Only (No Download)
+- Use `yt-dlp` to extract direct stream URLs only (no download)
+- Pass URL to frontend `<video>` element
+- Audio extraction via Web Audio API
+- ⚠️ URLs expire after ~6 hours
+- ⚠️ Still needs yt-dlp on backend
+
+**Implementation**:
+- [ ] New endpoint `/get-youtube-stream-url` (fast, no download)
+- [ ] Frontend handles expired URLs gracefully
+- [ ] Backend can be lightweight (no storage needed)
+
+#### Option 3: Separate Backend (Current approach) ⭐ Recommended for full features
+- Deploy FastAPI backend on **Railway**, **Render**, **Fly.io**, or VPS
+- These support long-running processes and persistent storage
+- Deploy React frontend to Vercel separately
+- Frontend points to external backend via `VITE_API_BASE_URL`
+
+**Deployment targets**:
+| Platform | Free Tier | Persistent Storage | Long-running |
+|----------|-----------|-------------------|--------------|
+| Railway | 500 hrs/mo | ✅ Yes | ✅ Yes |
+| Render | 750 hrs/mo | ✅ Yes | ✅ Yes |
+| Fly.io | 3 VMs free | ✅ Yes | ✅ Yes |
+| Vercel | Generous | ❌ No | ❌ No (serverless) |
+
+**Implementation**:
+- [ ] Create `railway.json` or `render.yaml` for backend
+- [ ] Set `VITE_API_BASE_URL` in Vercel env vars
+- [ ] Add CORS for production frontend domain
+
+#### Option 4: Hybrid (Vercel + Serverless Backend)
+- Frontend on Vercel
+- Backend on Vercel Serverless Functions (limited)
+- YouTube streaming via Option 2 (URL extraction only)
+- Full video download disabled
+
+**Trade-offs**:
+- Works for short videos only
+- No video caching
+- Simpler deployment (single platform)
+
+#### Recommendation
+- **For Vercel-only**: Use Option 1 (YouTube Embed) or Option 4 (Hybrid)
+- **For full features**: Use Option 3 (Separate Backend on Railway/Render)
+
+---
+
+### 2. ~~Loudness Relabel Postprocessing (Paper Section C.4)~~
 **Status**: ✅ Completed
 **Effort**: 1-2 hours
 
@@ -246,7 +448,7 @@ Add sliding window with overlap for smoother detection:
 - [ ] Add WebSocket endpoint for streaming audio/results
 
 ### Medium Priority
-- [ ] **Webcam Floating Modal (Mic Tab)** - Add webcam activation in mic input mode with floating draggable modal (same UX as YouTube video modal). Enable real-time video + audio capture for multimodal scenarios
+- [x] **Webcam Floating Modal (Mic Tab)** - Add webcam activation in mic input mode with floating draggable modal (same UX as YouTube video modal). Enable real-time video + audio capture for multimodal scenarios
 - [ ] Add local storage for user prompt presets
 - [ ] Add export of classification results (CSV/JSON)
 - [ ] Desktop wrapper (Tauri/Electron) for local GPU access

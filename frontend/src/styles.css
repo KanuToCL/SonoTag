@@ -1320,3 +1320,18 @@ button:hover {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
 }
+
+/* Floating Webcam Modal */
+.floating-webcam-modal {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.floating-webcam-modal:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.floating-webcam-modal video {
+  border: none;
+  outline: none;
+}

@@ -54,7 +54,7 @@ Users need a way to:
 | Stats Modal | ✅ Done | Cumulative statistics with PDF/CDF/Histogram charts |
 | Top-Ranked Tracking | ✅ Done | Track which label was #1 at each inference |
 | Video Modal Centered | ✅ Done | Video modal appears centered on first open |
-| Webcam Floating Modal | 📋 Planned | Camera feed in draggable modal (mic mode) |
+| Webcam Floating Modal | ✅ Done | Camera feed in draggable modal (mic mode) |
 | WebSocket Streaming | 📋 Planned | Low-latency audio chunk streaming |
 | Backend Thread Pool | 📋 Planned | Concurrent inference requests |
 | Web Worker Audio | 📋 Planned | Offload audio processing from main thread |
