@@ -1553,19 +1553,21 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               width: videoModalSize.width,
               height: videoModalSize.height,
               zIndex: 500,
-              background: "rgba(0, 0, 0, 0.65)",
+              background: "rgba(15, 20, 30, 0.55)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
               visibility: showVideoModal ? "visible" : "hidden",
               opacity: showVideoModal ? 1 : 0,
               transition: "opacity 0.2s ease, visibility 0.2s ease",
               borderRadius: "8px",
-              border: "1px solid rgba(255, 255, 255, 0.1)",
-              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.5)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4)",
               overflow: "hidden",
               display: "flex",
               flexDirection: "column",
             }}
           >
-            {/* Drag handle - top bar */}
+            {/* Drag handle - top bar (transparent glassmorphism) */}
             <div
               className="modal-drag-handle"
               onMouseDown={(e) => {
@@ -1578,7 +1580,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               }}
               style={{
                 height: "28px",
-                background: "rgba(15, 21, 32, 0.9)",
+                background: "transparent",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
