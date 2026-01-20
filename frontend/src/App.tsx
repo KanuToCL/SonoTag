@@ -1587,7 +1587,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                         }}
                         title={showStatsModal ? "Hide Stats" : "Show Cumulative Stats"}
                       >
-                        📊 Stats
+                        Stats
                       </button>
                   </div>
               </div>
@@ -2270,7 +2270,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               }}
             >
               <span style={{ fontSize: "12px", color: "var(--text)", fontWeight: 500 }}>
-                📊 Cumulative Statistics
+                Cumulative Statistics
               </span>
               <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                 <button
@@ -2549,8 +2549,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                   padding: "40px 20px",
                   color: "var(--muted)",
                 }}>
-                  <div style={{ fontSize: "32px", marginBottom: "12px" }}>📊</div>
-                  <div style={{ fontSize: "12px" }}>No data yet</div>
+                  <div style={{ fontSize: "24px", marginBottom: "12px", color: "var(--muted)" }}>No data yet</div>
                   <div style={{ fontSize: "10px", marginTop: "4px" }}>Start analyzing audio to see cumulative statistics</div>
                 </div>
               )}
