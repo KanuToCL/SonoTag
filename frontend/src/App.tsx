@@ -531,6 +531,7 @@ const [layoutMode, setLayoutMode] = useState<"immersive" | "classic">("immersive
   });
 
   // Immersive video modal state
+  const [showVideoModal, setShowVideoModal] = useState(true); // Video modal visibility toggle
   const [videoModalPosition, setVideoModalPosition] = useState({ x: 20, y: 20 });
   const [videoModalSize, setVideoModalSize] = useState({ width: 400, height: 280 });
   const [isDraggingModal, setIsDraggingModal] = useState(false);
@@ -1401,32 +1402,33 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                 <div className="spectrogram-label-spacer" />
               </div>
 
-              {/* Heatmap with Dynamic Labels */}
-              <div className="heatmap-section" style={{ height: heatmapHeight }}>
-                <span className="heatmap-label">FLAM Detection</span>
+              {/* Quick Action Buttons - below spectrogram */}
+              <div className="quick-actions" style={{
+                display: "flex",
+                gap: "8px",
+                padding: "8px 12px",
+                marginBottom: "8px",
+              }}>
                 <button
                   type="button"
                   onClick={() => setShowLabelsModal(!showLabelsModal)}
-                  className="labels-modal-btn"
+                  className="quick-action-btn"
                   style={{
-                    position: "absolute",
-                    top: "8px",
-                    right: "230px",
                     background: showLabelsModal ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.4)",
                     border: "1px solid rgba(255, 255, 255, 0.1)",
                     borderRadius: "4px",
-                    padding: "4px 10px",
-                    fontSize: "10px",
+                    padding: "6px 12px",
+                    fontSize: "11px",
                     color: showLabelsModal ? "var(--text)" : "var(--muted)",
                     cursor: "pointer",
-                    zIndex: 5,
                     display: "flex",
                     alignItems: "center",
-                    gap: "4px",
+                    gap: "6px",
                     textTransform: "uppercase",
                     letterSpacing: "0.5px",
+                    transition: "all 0.2s ease",
                   }}
-                  title="Open Labels panel"
+                  title={showLabelsModal ? "Hide Labels panel" : "Show Labels panel"}
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
@@ -1434,6 +1436,49 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                   </svg>
                   Labels
                 </button>
+
+                {inputMode === "youtube" && youtubeVideo && (
+                  <button
+                    type="button"
+                    onClick={() => setShowVideoModal(!showVideoModal)}
+                    className="quick-action-btn"
+                    style={{
+                      background: showVideoModal ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.4)",
+                      border: "1px solid rgba(255, 255, 255, 0.1)",
+                      borderRadius: "4px",
+                      padding: "6px 12px",
+                      fontSize: "11px",
+                      color: showVideoModal ? "var(--text)" : "var(--muted)",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.5px",
+                      transition: "all 0.2s ease",
+                    }}
+                    title={showVideoModal ? "Hide Video" : "Show Video"}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      {showVideoModal ? (
+                        <>
+                          <path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z" />
+                        </>
+                      ) : (
+                        <>
+                          <path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z" />
+                          <line x1="1" y1="1" x2="23" y2="23" />
+                        </>
+                      )}
+                    </svg>
+                    Video
+                  </button>
+                )}
+              </div>
+
+              {/* Heatmap with Dynamic Labels */}
+              <div className="heatmap-section" style={{ height: heatmapHeight }}>
+                <span className="heatmap-label">FLAM Detection</span>
                 <div className="heatmap-canvas-wrap">
                   <canvas
                     ref={heatmapRef}
@@ -1462,7 +1507,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
         </main>
 
         {/* Floating Video Modal - draggable and resizable */}
-        {inputMode === "youtube" && youtubeVideo && (
+        {inputMode === "youtube" && youtubeVideo && showVideoModal && (
           <div
             className="floating-video-modal"
             style={{

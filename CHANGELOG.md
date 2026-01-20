@@ -10,9 +10,16 @@ All notable changes to this project will be documented in this file.
   - When switching layouts, the canvas refs point to different DOM elements, but the old effect was still drawing to unmounted canvases
   - Fix: Added `layoutMode` to the dependency array, ensuring the effect cleans up and restarts with the new canvas refs
 
+### Added - Quick Action Buttons (Immersive Mode)
+- **Quick action button bar**: New button row below the spectrogram for easy access to common actions
+  - **Labels button**: Toggle the floating Labels panel (moved from heatmap section)
+  - **Video button**: Show/hide the floating video modal (only visible when a YouTube video is loaded)
+- **Video modal visibility toggle**: `showVideoModal` state allows hiding the video while keeping audio analysis running
+
 ### Technical Notes
 - The video heatmap draw loop effect (lines 642-741) now depends on: `youtubeAnalyzing`, `slideSpeed`, `freqRange.min`, `freqRange.max`, `nyquist`, and `layoutMode`
 - When `layoutMode` changes: old animation frame is cancelled → new effect starts → draws to correct canvas elements
+- Quick action buttons use consistent styling with hover states and active indicators
 
 ## [0.4.3] - 2026-01-19
 
