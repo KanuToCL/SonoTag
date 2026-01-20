@@ -1287,3 +1287,31 @@ button:hover {
     width: 100%;
   }
 }
+
+/* =============================================================================
+   GLASSMORPHISM FLOATING MODALS
+   ============================================================================= */
+
+/* Transparent scrollbar for floating modals */
+.floating-labels-modal ::-webkit-scrollbar {
+  width: 6px;
+}
+
+.floating-labels-modal ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.floating-labels-modal ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.floating-labels-modal ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Firefox scrollbar */
+.floating-labels-modal * {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}

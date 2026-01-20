@@ -1944,7 +1944,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
         {/* Floating Labels Modal */}
         {showLabelsModal && (
           <div
-            className="floating-video-modal"
+            className="floating-video-modal floating-labels-modal"
             style={{
               position: "fixed",
               left: labelsModalPosition.x,
@@ -1952,16 +1952,18 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               width: 280,
               height: labelsModalHeight,
               zIndex: 501,
-              background: "rgba(0, 0, 0, 0.65)",
+              background: "rgba(15, 20, 30, 0.55)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
               borderRadius: "8px",
-              border: "1px solid rgba(255, 255, 255, 0.1)",
-              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.5)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4)",
               overflow: "hidden",
               display: "flex",
               flexDirection: "column",
             }}
           >
-            {/* Drag handle - top bar */}
+            {/* Drag handle - top bar (transparent glassmorphism) */}
             <div
               className="modal-drag-handle"
               onMouseDown={(e) => {
@@ -1974,7 +1976,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               }}
               style={{
                 height: "28px",
-                background: "rgba(15, 21, 32, 0.9)",
+                background: "transparent",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
