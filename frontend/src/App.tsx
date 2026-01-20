@@ -1463,90 +1463,81 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                     height={200}
                   />
                 </div>
-                {/* Quick Action Buttons - in the spacer area on the right */}
+                {/* Quick Action Buttons - detached individual buttons */}
                   <div className="spectrogram-label-spacer" style={{
                     display: "flex",
                     flexDirection: "column",
                     alignItems: "flex-start",
                     justifyContent: "flex-start",
-                    gap: "8px",
+                    gap: "6px",
                     padding: "8px 12px",
                   }}>
-                    {/* Button group container matching top bar style */}
-                    <div style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      background: "rgba(15, 21, 32, 0.8)",
-                      borderRadius: "8px",
-                      border: "1px solid var(--border)",
-                      overflow: "hidden",
-                    }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowLabelsModal(!showLabelsModal)}
+                      style={{
+                        padding: "8px 16px",
+                        fontSize: "13px",
+                        fontWeight: 500,
+                        color: showLabelsModal ? "var(--accent)" : "var(--muted)",
+                        background: showLabelsModal ? "rgba(255, 122, 61, 0.2)" : "rgba(15, 21, 32, 0.8)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        transition: "all 0.2s ease",
+                        width: "100%",
+                      }}
+                      title={showLabelsModal ? "Hide Labels panel" : "Show Labels panel"}
+                    >
+                      Labels
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowPromptsModal(!showPromptsModal);
+                        if (!showPromptsModal) {
+                          setPromptsModalInput(prompts.join("; "));
+                        }
+                      }}
+                      style={{
+                        padding: "8px 16px",
+                        fontSize: "13px",
+                        fontWeight: 500,
+                        color: showPromptsModal ? "var(--accent)" : "var(--muted)",
+                        background: showPromptsModal ? "rgba(255, 122, 61, 0.2)" : "rgba(15, 21, 32, 0.8)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        transition: "all 0.2s ease",
+                        width: "100%",
+                      }}
+                      title={showPromptsModal ? "Hide Prompts panel" : "Edit Prompts"}
+                    >
+                      Prompts
+                    </button>
+
+                    {inputMode === "youtube" && youtubeVideo && (
                       <button
                         type="button"
-                        onClick={() => setShowLabelsModal(!showLabelsModal)}
+                        onClick={() => setShowVideoModal(!showVideoModal)}
                         style={{
                           padding: "8px 16px",
                           fontSize: "13px",
                           fontWeight: 500,
-                          color: showLabelsModal ? "var(--accent)" : "var(--muted)",
-                          background: showLabelsModal ? "rgba(255, 122, 61, 0.2)" : "transparent",
-                          border: "none",
-                          borderBottom: "1px solid var(--border)",
+                          color: showVideoModal ? "var(--accent)" : "var(--muted)",
+                          background: showVideoModal ? "rgba(255, 122, 61, 0.2)" : "rgba(15, 21, 32, 0.8)",
+                          border: "1px solid var(--border)",
+                          borderRadius: "8px",
                           cursor: "pointer",
                           transition: "all 0.2s ease",
-                          textAlign: "left",
+                          width: "100%",
                         }}
-                        title={showLabelsModal ? "Hide Labels panel" : "Show Labels panel"}
+                        title={showVideoModal ? "Hide Video" : "Show Video"}
                       >
-                        Labels
+                        Video
                       </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowPromptsModal(!showPromptsModal);
-                          if (!showPromptsModal) {
-                            setPromptsModalInput(prompts.join("; "));
-                          }
-                        }}
-                        style={{
-                          padding: "8px 16px",
-                          fontSize: "13px",
-                          fontWeight: 500,
-                          color: showPromptsModal ? "var(--accent)" : "var(--muted)",
-                          background: showPromptsModal ? "rgba(255, 122, 61, 0.2)" : "transparent",
-                          border: "none",
-                          borderBottom: inputMode === "youtube" && youtubeVideo ? "1px solid var(--border)" : "none",
-                          cursor: "pointer",
-                          transition: "all 0.2s ease",
-                          textAlign: "left",
-                        }}
-                        title={showPromptsModal ? "Hide Prompts panel" : "Edit Prompts"}
-                      >
-                        Prompts
-                      </button>
-
-                      {inputMode === "youtube" && youtubeVideo && (
-                        <button
-                          type="button"
-                          onClick={() => setShowVideoModal(!showVideoModal)}
-                          style={{
-                            padding: "8px 16px",
-                            fontSize: "13px",
-                            fontWeight: 500,
-                            color: showVideoModal ? "var(--accent)" : "var(--muted)",
-                            background: showVideoModal ? "rgba(255, 122, 61, 0.2)" : "transparent",
-                            border: "none",
-                            cursor: "pointer",
-                            transition: "all 0.2s ease",
-                            textAlign: "left",
-                          }}
-                          title={showVideoModal ? "Hide Video" : "Show Video"}
-                        >
-                          Video
-                        </button>
-                      )}
-                    </div>
+                    )}
                   </div>
               </div>
 
