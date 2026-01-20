@@ -1,0 +1,24 @@
+# Docker build ignores
+node_modules/
+frontend/node_modules/
+frontend/dist/
+.git/
+.gitignore
+docs/
+*.command
+*.bat
+*.md
+!README.md
+!openflam/README.md
+__pycache__/
+*.pyc
+.DS_Store
+*.log
+.venv/
+.env
+sonotag-devmate-summary.md
+
+# Large model files should be downloaded at runtime, not built into image
+# Comment out below if you want to include pre-downloaded models
+# openflam_ckpt/
+# backend/openflam_ckpt/

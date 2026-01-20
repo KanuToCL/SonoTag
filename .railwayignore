@@ -1,7 +1,7 @@
 # Railway ignores these files/folders during deployment
 node_modules/
 frontend/node_modules/
-*.md
+frontend/dist/
 docs/
 .git/
 *.command
@@ -10,3 +10,4 @@ __pycache__/
 *.pyc
 .DS_Store
 *.log
+sonotag-devmate-summary.md

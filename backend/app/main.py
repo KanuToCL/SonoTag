@@ -190,7 +190,7 @@ async def lifespan(app: FastAPI):
 
         # Model path - check multiple locations
         model_path = os.getenv("FLAM_MODEL_PATH", None)
-        
+
         # Try common locations
         possible_paths = [
             model_path,
@@ -199,22 +199,22 @@ async def lifespan(app: FastAPI):
             os.path.join(os.path.dirname(__file__), "..", "..", "openflam_ckpt"),
             os.path.expanduser("~/.cache/openflam"),
         ]
-        
+
         actual_path = None
         for p in possible_paths:
             if p and os.path.exists(p):
                 actual_path = p
                 break
-        
+
         if actual_path is None:
             # Create cache directory and let HuggingFace download
             cache_dir = os.path.expanduser("~/.cache/openflam")
             os.makedirs(cache_dir, exist_ok=True)
             actual_path = cache_dir
             logger.info(f"Model checkpoint not found, will download to: {cache_dir}")
-        
+
         logger.info(f"Using model path: {actual_path}")
-        
+
         # Load model (will download from HuggingFace if not present)
         flam_model = openflam.OpenFLAM(
             model_name="v1-base",
