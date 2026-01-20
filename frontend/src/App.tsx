@@ -1394,7 +1394,27 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
           <div className="viz-container">
             {/* Spectrogram */}
               <div className="spectrogram-section">
-                <span className="spectrogram-label">Spectrogram</span>
+                {/* Minimal Hz scale on left edge */}
+                <div className="hz-scale" style={{
+                  position: "absolute",
+                  left: "4px",
+                  top: 0,
+                  bottom: 0,
+                  width: "28px",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  pointerEvents: "none",
+                  zIndex: 2,
+                  padding: "2px 0",
+                }}>
+                  <span style={{ fontSize: "8px", color: "rgba(255,255,255,0.35)", fontFamily: "monospace" }}>
+                    {formatHz(freqRange.max)}
+                  </span>
+                  <span style={{ fontSize: "8px", color: "rgba(255,255,255,0.35)", fontFamily: "monospace" }}>
+                    {formatHz(freqRange.min)}
+                  </span>
+                </div>
                 <div className="spectrogram-canvas-wrap">
                   <canvas
                     ref={spectrogramRef}
