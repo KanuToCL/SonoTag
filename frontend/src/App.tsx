@@ -2476,6 +2476,18 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
           <div className="footer-section">
             <button
               type="button"
+              className={`preset-btn ${prompts === DIALOG_MOVIE_PROMPTS ? "active" : ""}`}
+              onClick={() => {
+                setPrompts(DIALOG_MOVIE_PROMPTS);
+                setPromptInput(DIALOG_MOVIE_PROMPTS.join("; "));
+                setClassificationScores({});
+                setMusicDecomposition(false);
+              }}
+            >
+              Dialog
+            </button>
+            <button
+              type="button"
               className={`preset-btn ${prompts === ACTION_MOVIE_PROMPTS ? "active" : ""}`}
               onClick={() => {
                 setPrompts(ACTION_MOVIE_PROMPTS);
@@ -2484,7 +2496,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                 setMusicDecomposition(false);
               }}
             >
-              🎬 Action
+              Action
             </button>
             <button
               type="button"
@@ -2496,7 +2508,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                 setMusicDecomposition(false);
               }}
             >
-              🏈 Sports
+              Sports
             </button>
             <button
               type="button"
@@ -2508,7 +2520,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                 setMusicDecomposition(true);
               }}
             >
-              🎵 Music
+              Music
             </button>
           </div>
 
@@ -3189,8 +3201,8 @@ onPause={() => {
                   }}
                 />
                 <label htmlFor="music-decomposition-toggle" style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
-                  🎵 Music decomposition mode
-                </label>
+                    Music decomposition mode
+                  </label>
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.5rem" }}>
