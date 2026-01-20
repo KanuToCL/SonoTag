@@ -593,6 +593,8 @@ const [layoutMode, setLayoutMode] = useState<"immersive" | "classic">("immersive
   const [totalInferences, setTotalInferences] = useState<number>(0);
   const [tableSortBy, setTableSortBy] = useState<"median" | "peak">("median"); // Sort order for label gauges table
   const [hoveredCdfLabel, setHoveredCdfLabel] = useState<string | null>(null); // Hovered point in CDF chart
+  const [hoveredCdfPos, setHoveredCdfPos] = useState<{ x: number; y: number } | null>(null); // Position for CDF tooltip
+  const [hoveredHistogramBin, setHoveredHistogramBin] = useState<{ count: number; x: number; y: number } | null>(null); // Hovered histogram bin
 
 // YouTube Analysis state
   const [youtubeUrl, setYoutubeUrl] = useState<string>("");
@@ -2663,10 +2665,13 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                       CDF (Cumulative Distribution)
                     </div>
                     <div style={{ fontSize: "9px", color: "var(--muted)" }}>
-                      {hoveredCdfLabel ? hoveredCdfLabel : `${Object.keys(scoreHistory).length} labels`}
+                      {Object.keys(scoreHistory).length} labels
                     </div>
                   </div>
-                  <div style={{ position: "relative", height: "80px", background: "rgba(0, 0, 0, 0.3)", borderRadius: "4px", padding: "8px" }}>
+                  <div
+                    style={{ position: "relative", height: "80px", background: "rgba(0, 0, 0, 0.3)", borderRadius: "4px", padding: "8px" }}
+                    onMouseLeave={() => { setHoveredCdfLabel(null); setHoveredCdfPos(null); }}
+                  >
                     {(() => {
                       const medians = Object.entries(scoreHistory).map(([label, scores]) => {
                         const sorted = [...scores].sort((a, b) => a - b);
@@ -2697,7 +2702,6 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                           height="100%"
                           viewBox="0 0 100 100"
                           preserveAspectRatio="none"
-                          onMouseLeave={() => setHoveredCdfLabel(null)}
                           style={{ cursor: "crosshair" }}
                         >
                           <line x1="0" y1="50" x2="100" y2="50" stroke="rgba(255,255,255,0.1)" strokeWidth="0.3" />
@@ -2713,37 +2717,36 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                               stroke={hoveredCdfLabel === p.label ? "#fff" : "rgba(0,0,0,0.5)"}
                               strokeWidth={hoveredCdfLabel === p.label ? "1" : "0.3"}
                               style={{ cursor: "pointer", transition: "r 0.1s, stroke-width 0.1s" }}
-                              onMouseEnter={() => setHoveredCdfLabel(p.label)}
-                            >
-                              <title>{`${p.label}: ${(p.median * 100).toFixed(1)}%`}</title>
-                            </circle>
+                              onMouseEnter={(e) => {
+                                const rect = e.currentTarget.ownerSVGElement?.getBoundingClientRect();
+                                if (rect) {
+                                  setHoveredCdfLabel(p.label);
+                                  setHoveredCdfPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                                }
+                              }}
+                            />
                           ))}
                         </svg>
                       );
                     })()}
-                    {/* Hover tooltip */}
-                    {hoveredCdfLabel && (() => {
-                      const scores = scoreHistory[hoveredCdfLabel] || [];
-                      const sorted = [...scores].sort((a, b) => a - b);
-                      const median = sorted[Math.floor(sorted.length / 2)] || 0;
-                      return (
-                        <div style={{
-                          position: "absolute",
-                          top: "4px",
-                          right: "4px",
-                          background: "rgba(0, 0, 0, 0.8)",
-                          padding: "4px 8px",
-                          borderRadius: "4px",
-                          fontSize: "9px",
-                          color: "#fff",
-                          pointerEvents: "none",
-                        }}>
-                          <strong>{hoveredCdfLabel.length > 20 ? `${hoveredCdfLabel.slice(0, 20)}...` : hoveredCdfLabel}</strong>
-                          <br />
-                          Median: {(median * 100).toFixed(1)}%
-                        </div>
-                      );
-                    })()}
+                    {/* Hover tooltip - follows pointer */}
+                    {hoveredCdfLabel && hoveredCdfPos && (
+                      <div style={{
+                        position: "absolute",
+                        left: `${Math.min(hoveredCdfPos.x + 10, 200)}px`,
+                        top: `${Math.max(hoveredCdfPos.y - 20, 4)}px`,
+                        background: "rgba(0, 0, 0, 0.85)",
+                        padding: "3px 6px",
+                        borderRadius: "3px",
+                        fontSize: "8px",
+                        color: "#fff",
+                        pointerEvents: "none",
+                        whiteSpace: "nowrap",
+                        zIndex: 10,
+                      }}>
+                        {hoveredCdfLabel.length > 25 ? `${hoveredCdfLabel.slice(0, 25)}...` : hoveredCdfLabel}
+                      </div>
+                    )}
                     <div style={{ position: "absolute", top: "2px", left: "4px", fontSize: "7px", color: "var(--muted)" }}>100%</div>
                     <div style={{ position: "absolute", bottom: "2px", left: "4px", fontSize: "7px", color: "var(--muted)" }}>0%</div>
                     <div style={{ position: "absolute", bottom: "-2px", left: "8px", right: "8px", display: "flex", justifyContent: "space-between", fontSize: "7px", color: "var(--muted)" }}>
@@ -2770,7 +2773,10 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                       n={Object.values(scoreHistory).flat().length}
                     </div>
                   </div>
-                  <div style={{ position: "relative", height: "80px", background: "rgba(0, 0, 0, 0.3)", borderRadius: "4px", padding: "8px" }}>
+                  <div
+                    style={{ position: "relative", height: "80px", background: "rgba(0, 0, 0, 0.3)", borderRadius: "4px", padding: "8px" }}
+                    onMouseLeave={() => setHoveredHistogramBin(null)}
+                  >
                     {(() => {
                       const allScores = Object.values(scoreHistory).flat();
                       const numBins = 25;
@@ -2783,7 +2789,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                       const maxBin = Math.max(...bins, 1);
 
                       return (
-                        <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+                        <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ cursor: "crosshair" }}>
                           <line x1="0" y1="50" x2="100" y2="50" stroke="rgba(255,255,255,0.1)" strokeWidth="0.3" />
                           {bins.map((count, i) => {
                             const x = (i / numBins) * 100;
@@ -2797,16 +2803,40 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                                 x={x}
                                 y={100 - height}
                                 width={width}
-                                height={height}
+                                height={Math.max(height, 2)}
                                 fill={color}
                                 stroke="rgba(255,255,255,0.3)"
                                 strokeWidth="0.3"
+                                style={{ cursor: "pointer" }}
+                                onMouseEnter={(e) => {
+                                  const rect = e.currentTarget.ownerSVGElement?.getBoundingClientRect();
+                                  if (rect) {
+                                    setHoveredHistogramBin({ count, x: e.clientX - rect.left, y: e.clientY - rect.top });
+                                  }
+                                }}
                               />
                             );
                           })}
                         </svg>
                       );
                     })()}
+                    {/* Hover tooltip - shows count */}
+                    {hoveredHistogramBin && hoveredHistogramBin.count > 0 && (
+                      <div style={{
+                        position: "absolute",
+                        left: `${Math.min(hoveredHistogramBin.x + 8, 220)}px`,
+                        top: `${Math.max(hoveredHistogramBin.y - 16, 4)}px`,
+                        background: "rgba(0, 0, 0, 0.85)",
+                        padding: "2px 5px",
+                        borderRadius: "3px",
+                        fontSize: "8px",
+                        color: "#fff",
+                        pointerEvents: "none",
+                        zIndex: 10,
+                      }}>
+                        {hoveredHistogramBin.count}
+                      </div>
+                    )}
                     <div style={{ position: "absolute", bottom: "-2px", left: "8px", right: "8px", display: "flex", justifyContent: "space-between", fontSize: "7px", color: "var(--muted)" }}>
                       <span>0</span>
                       <span>0.5</span>
