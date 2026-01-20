@@ -1293,25 +1293,30 @@ button:hover {
    ============================================================================= */
 
 /* Transparent scrollbar for floating modals */
-.floating-labels-modal ::-webkit-scrollbar {
+.floating-labels-modal ::-webkit-scrollbar,
+.floating-stats-modal ::-webkit-scrollbar {
   width: 6px;
 }
 
-.floating-labels-modal ::-webkit-scrollbar-track {
+.floating-labels-modal ::-webkit-scrollbar-track,
+.floating-stats-modal ::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.floating-labels-modal ::-webkit-scrollbar-thumb {
+.floating-labels-modal ::-webkit-scrollbar-thumb,
+.floating-stats-modal ::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.1);
   border-radius: 3px;
 }
 
-.floating-labels-modal ::-webkit-scrollbar-thumb:hover {
+.floating-labels-modal ::-webkit-scrollbar-thumb:hover,
+.floating-stats-modal ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
 }
 
 /* Firefox scrollbar */
-.floating-labels-modal * {
+.floating-labels-modal *,
+.floating-stats-modal * {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
 }

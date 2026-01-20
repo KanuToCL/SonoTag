@@ -2423,11 +2423,22 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                   borderRadius: "8px",
                   padding: "12px",
                 }}>
-                  <div style={{ fontSize: "10px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "10px" }}>
-                    Score Distribution (CDF)
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                    <div style={{ fontSize: "10px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "1px" }}>
+                      Score Distribution (CDF)
+                    </div>
+                    <div style={{ fontSize: "9px", color: "var(--muted)" }}>
+                      n={totalInferences}
+                    </div>
                   </div>
                   <div style={{ position: "relative", height: "120px", background: "rgba(0, 0, 0, 0.3)", borderRadius: "4px", padding: "8px" }}>
-                    <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+                    <svg
+                      key={`cdf-${totalInferences}`}
+                      width="100%"
+                      height="100%"
+                      viewBox="0 0 100 100"
+                      preserveAspectRatio="none"
+                    >
                       {/* Grid lines */}
                       <line x1="0" y1="25" x2="100" y2="25" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" />
                       <line x1="0" y1="50" x2="100" y2="50" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" />
@@ -2455,7 +2466,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                           }
                           return (
                             <polyline
-                              key={label}
+                              key={`${label}-${scores.length}`}
                               points={points.join(" ")}
                               fill="none"
                               stroke={colors[idx % colors.length]}
