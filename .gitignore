@@ -1,10 +1,11 @@
 backend/.venv/
 frontend/node_modules/
 frontend/dist/
-openflam/
 openflam_ckpt/
+backend/openflam_ckpt/
 .python-version
 __pycache__/
 *.pyc
 .env
 .DS_Store
+backend/static/

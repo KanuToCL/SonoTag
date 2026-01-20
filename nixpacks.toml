@@ -1,0 +1,21 @@
+# Python
+python-3.12
+
+# System packages needed for audio processing
+[phases.setup]
+nixPkgs = ["ffmpeg"]
+
+# Install Python dependencies
+[phases.install]
+cmds = [
+    "cd backend && pip install -r requirements.txt",
+    "pip install -e openflam"
+]
+
+# Build frontend and copy to backend
+[phases.build]
+cmds = [
+    "cd frontend && npm ci && npm run build",
+    "rm -rf backend/static",
+    "cp -r frontend/dist backend/static"
+]

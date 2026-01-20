@@ -188,11 +188,37 @@ async def lifespan(app: FastAPI):
 
         logger.info(f"Loading FLAM model on device: {device}")
 
-        # Load model
-        model_path = os.getenv("FLAM_MODEL_PATH", "openflam_ckpt")
+        # Model path - check multiple locations
+        model_path = os.getenv("FLAM_MODEL_PATH", None)
+        
+        # Try common locations
+        possible_paths = [
+            model_path,
+            "openflam_ckpt",
+            "../openflam_ckpt",
+            os.path.join(os.path.dirname(__file__), "..", "..", "openflam_ckpt"),
+            os.path.expanduser("~/.cache/openflam"),
+        ]
+        
+        actual_path = None
+        for p in possible_paths:
+            if p and os.path.exists(p):
+                actual_path = p
+                break
+        
+        if actual_path is None:
+            # Create cache directory and let HuggingFace download
+            cache_dir = os.path.expanduser("~/.cache/openflam")
+            os.makedirs(cache_dir, exist_ok=True)
+            actual_path = cache_dir
+            logger.info(f"Model checkpoint not found, will download to: {cache_dir}")
+        
+        logger.info(f"Using model path: {actual_path}")
+        
+        # Load model (will download from HuggingFace if not present)
         flam_model = openflam.OpenFLAM(
             model_name="v1-base",
-            default_ckpt_path=model_path,
+            default_ckpt_path=actual_path,
         ).to(device)
 
         # Pre-compute text embeddings for default prompts
@@ -1278,3 +1304,60 @@ async def cleanup_video(video_id: str):
         shutil.rmtree(dir_path, ignore_errors=True)
 
     return {"status": "cleaned_up", "video_id": video_id}
+
+
+# =============================================================================
+# Static File Serving (for Railway deployment)
+# =============================================================================
+
+# Serve React frontend static files when deployed
+# The frontend is built and copied to backend/static during Railway build
+from fastapi.staticfiles import StaticFiles
+
+static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
+
+if os.path.exists(static_dir):
+    # Mount assets directory for JS, CSS, images
+    assets_dir = os.path.join(static_dir, "assets")
+    if os.path.exists(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    @app.get("/")
+    async def serve_react_app():
+        """Serve the React app's index.html."""
+        index_path = os.path.join(static_dir, "index.html")
+        if os.path.exists(index_path):
+            return FileResponse(index_path)
+        raise HTTPException(status_code=404, detail="Frontend not found")
+
+    # Catch-all route for client-side routing (must be last)
+    @app.get("/{path:path}")
+    async def serve_react_routes(path: str):
+        """
+        Serve static files or fall back to index.html for client-side routing.
+        This must be defined after all API routes.
+        """
+        # Skip API routes
+        if path.startswith("api/") or path in [
+            "health",
+            "system-info",
+            "recommend-buffer",
+            "classify",
+            "classify-local",
+            "analyze-youtube",
+            "prepare-youtube-video",
+            "cleanup-video",
+        ] or path.startswith("stream-video/"):
+            raise HTTPException(status_code=404, detail="Not found")
+
+        # Try to serve the exact file
+        file_path = os.path.join(static_dir, path)
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            return FileResponse(file_path)
+
+        # Fall back to index.html for client-side routing
+        index_path = os.path.join(static_dir, "index.html")
+        if os.path.exists(index_path):
+            return FileResponse(index_path)
+
+        raise HTTPException(status_code=404, detail="Not found")

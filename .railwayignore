@@ -1,0 +1,12 @@
+# Railway ignores these files/folders during deployment
+node_modules/
+frontend/node_modules/
+*.md
+docs/
+.git/
+*.command
+*.bat
+__pycache__/
+*.pyc
+.DS_Store
+*.log
