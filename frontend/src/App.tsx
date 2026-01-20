@@ -51,7 +51,7 @@ const CLASSIFY_INTERVAL_MS = 500; // Small cooldown to prevent overlapping reque
 
 // Sliding speed control (1=slowest/every 6th frame, 5=fastest/every frame)
 // Lower values skip more frames for slower scrolling
-const DEFAULT_SLIDE_SPEED = 4;
+const DEFAULT_SLIDE_SPEED = 2;
 const MIN_SLIDE_SPEED = 1;
 const MAX_SLIDE_SPEED = 5;
 // Frame skip map: speed 1 = draw every 6 frames, speed 5 = every frame
