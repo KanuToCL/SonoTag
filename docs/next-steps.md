@@ -1076,12 +1076,384 @@ Add sliding window with overlap for smoother detection:
 - [ ] Add export of classification results (CSV/JSON)
 - [ ] Desktop wrapper (Tauri/Electron) for local GPU access
 - [ ] Add prompt suggestions/autocomplete
+- [ ] **Music Tab** - See [Music Tab Feature](#-music-tab-feature) below
 
 ### Low Priority
 - [ ] Add dark/light theme toggle
 - [ ] Add keyboard shortcuts
 - [ ] Add i18n support
 - [ ] Add PWA support for offline use
+
+---
+
+## 🎵 Music Tab Feature
+
+### Concept
+
+Add a dedicated **Music Tab** alongside the existing Video and Microphone tabs, optimized for audio-only analysis with genre-specific prompt presets.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  [ 🎥 Video ]   [ 🎤 Microphone ]   [ 🎵 Music ]  ← NEW TAB  │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  🔗 SoundCloud URL: [________________________] [Load]        │
+│                                                              │
+│  Genre Presets:                                              │
+│  [Techno] [Classical] [Pop] [Rock] [Jazz] [🎵 All Music]    │
+│                                                              │
+│  (Audio player / waveform visualization)                     │
+│                                                              │
+│  (Heatmap + spectrogram as usual)                           │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Key Features
+
+1. **SoundCloud Integration**
+   - Accept SoundCloud URLs (yt-dlp already supports this)
+   - Audio-only player (no video component needed)
+   - Waveform visualization instead of video
+   - Future: Bandcamp, Mixcloud support
+
+2. **Dynamic Genre Presets**
+   - When in Music tab, auto-prompt buttons switch to audio/music presets
+   - Each genre populates with common instruments for that style
+   - Replaces general video presets (speech, applause, etc.)
+
+3. **Genre Preset Definitions**
+
+   | Genre | Prompts |
+   |-------|---------|
+   | **Techno** | kick drum, hi-hat, bass synth, arpeggio, drum machine, acid bass, clap, industrial sounds, reverb, delay effects |
+   | **Classical** | violin, cello, piano, orchestra, strings, woodwind, brass, timpani, harp, classical guitar, crescendo, legato |
+   | **Pop** | vocals, drums, bass guitar, synthesizer, piano, acoustic guitar, backing vocals, handclaps, electronic beats |
+   | **Rock** | electric guitar, drums, bass guitar, distorted guitar, power chords, drum fills, guitar solo, cymbals, rock vocals |
+   | **Jazz** | saxophone, trumpet, double bass, piano, brushes on drums, jazz guitar, improvisation, swing rhythm, walking bass |
+   | **🎵 All Music** | vocals, drums, bass, guitar, piano, synthesizer, strings, brass, percussion, rhythm, melody, harmony |
+
+4. **UI/UX Considerations**
+   - Tab icon: 🎵 or music note
+   - Genre buttons styled as pills/chips
+   - Active genre highlighted
+   - "All Music" is the default (general music analysis)
+   - Custom prompts still available (override presets)
+
+### Implementation Tasks
+
+**Frontend (`App.tsx`)**:
+- [ ] Add Music tab to tab switcher
+- [ ] Create `MusicTab` component or mode within existing structure
+- [ ] Add genre preset buttons that update prompts state
+- [ ] Define genre preset constants (see table above)
+- [ ] Audio-only player component (reuse audio extraction logic)
+- [ ] Waveform visualization (optional, enhance existing spectrogram)
+
+**Backend (`main.py`)**:
+- [ ] No changes needed - same `/prepare-video` endpoint works for SoundCloud
+- [ ] yt-dlp auto-detects platform and handles audio extraction
+
+**API (`api.ts`)**:
+- [ ] Update types if needed for audio-only responses
+- [ ] Consider adding platform detection helper
+
+### Genre Preset Code Example
+
+```typescript
+// Genre presets for Music tab
+const GENRE_PRESETS: Record<string, string[]> = {
+  techno: [
+    "kick drum", "hi-hat", "bass synth", "arpeggio",
+    "drum machine", "acid bass", "clap", "industrial sounds"
+  ],
+  classical: [
+    "violin", "cello", "piano", "orchestra", "strings",
+    "woodwind", "brass", "timpani", "harp", "classical guitar"
+  ],
+  pop: [
+    "vocals", "drums", "bass guitar", "synthesizer", "piano",
+    "acoustic guitar", "backing vocals", "handclaps", "electronic beats"
+  ],
+  rock: [
+    "electric guitar", "drums", "bass guitar", "distorted guitar",
+    "power chords", "drum fills", "guitar solo", "cymbals", "rock vocals"
+  ],
+  jazz: [
+    "saxophone", "trumpet", "double bass", "piano", "brushes on drums",
+    "jazz guitar", "improvisation", "swing rhythm", "walking bass"
+  ],
+  allMusic: [
+    "vocals", "drums", "bass", "guitar", "piano", "synthesizer",
+    "strings", "brass", "percussion", "rhythm", "melody", "harmony"
+  ],
+};
+
+// Apply genre preset
+const applyGenrePreset = (genre: keyof typeof GENRE_PRESETS) => {
+  const prompts = GENRE_PRESETS[genre];
+  setLabels(prompts.map((text, i) => ({
+    id: i + 1,
+    text,
+    color: labelColors[i % labelColors.length],
+    scores: [],
+  })));
+};
+```
+
+### Future Enhancements
+
+- **BPM Detection**: Add tempo analysis alongside FLAM
+- **Key Detection**: Musical key identification
+- **Genre Auto-Detection**: Use FLAM to suggest genre from audio - see [detailed approach](#-genre-auto-detection-using-flam) below
+- **Playlist Support**: Analyze multiple SoundCloud tracks in sequence
+- **Audio Upload**: Local audio file upload (MP3, WAV, FLAC)
+
+---
+
+## 🔮 Genre Auto-Detection using FLAM
+
+### Overview
+
+Use FLAM's language-audio similarity model to automatically detect music genre. While FLAM wasn't explicitly trained for genre classification, we can leverage its fine-grained sound detection to infer genre through multiple approaches.
+
+### Approach 1: Multi-Genre Probe (Recommended) ⭐
+
+Run FLAM with **all genre presets simultaneously** and pick the one with the highest aggregate score.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Multi-Genre Probe Flow                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   Audio Input                                                    │
+│       │                                                          │
+│       ▼                                                          │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │  FLAM Inference                                          │   │
+│   │  Prompts: [techno_prompts, classical_prompts, pop_prompts,│   │
+│   │            rock_prompts, jazz_prompts, ...]             │   │
+│   │  (~50-60 prompts total)                                 │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│       │                                                          │
+│       ▼                                                          │
+│   Group scores by genre → Sum/Average per genre                  │
+│       │                                                          │
+│       ▼                                                          │
+│   Winner: Highest scoring genre + confidence %                   │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Advantages:**
+- Single FLAM inference (fast)
+- Simple implementation
+- Works with existing infrastructure
+
+**Disadvantages:**
+- Accuracy depends on prompt quality
+- May struggle with genre fusion/crossover
+
+**Implementation:**
+
+```typescript
+interface GenreDetectionResult {
+  genre: string;
+  confidence: number;
+  scores: Record<string, number>;
+}
+
+const detectGenre = async (audioBlob: Blob): Promise<GenreDetectionResult> => {
+  // Flatten all genre prompts with genre tags
+  const taggedPrompts: Array<{ genre: string; prompt: string }> = [];
+
+  Object.entries(GENRE_PRESETS).forEach(([genre, prompts]) => {
+    prompts.forEach(prompt => {
+      taggedPrompts.push({ genre, prompt });
+    });
+  });
+
+  // Single FLAM inference with all prompts
+  const scores = await classifyAudio(
+    audioBlob,
+    taggedPrompts.map(p => p.prompt)
+  );
+
+  // Aggregate scores by genre
+  const genreScores: Record<string, number[]> = {};
+  taggedPrompts.forEach((p, i) => {
+    if (!genreScores[p.genre]) genreScores[p.genre] = [];
+    genreScores[p.genre].push(scores[i]);
+  });
+
+  // Calculate average score per genre
+  const genreAverages: Record<string, number> = {};
+  Object.entries(genreScores).forEach(([genre, scoreList]) => {
+    genreAverages[genre] = scoreList.reduce((a, b) => a + b, 0) / scoreList.length;
+  });
+
+  // Find winner
+  const sortedGenres = Object.entries(genreAverages)
+    .sort((a, b) => b[1] - a[1]);
+
+  const winner = sortedGenres[0];
+  const totalScore = Object.values(genreAverages).reduce((a, b) => a + b, 0);
+  const confidence = (winner[1] / totalScore) * 100;
+
+  return {
+    genre: winner[0],
+    confidence: Math.min(confidence, 99), // Cap at 99%
+    scores: genreAverages,
+  };
+};
+```
+
+---
+
+### Approach 2: Cascade Detection (More Accurate)
+
+Two-stage detection for more nuanced classification:
+
+**Stage 1**: Detect raw audio characteristics (instrument/sound primitives)
+
+```typescript
+const AUDIO_CHARACTERISTICS = [
+  "drums", "synthesizer", "acoustic instruments", "electric guitar",
+  "vocals", "orchestral", "fast tempo", "slow tempo", "distorted sounds",
+  "clean sounds", "electronic beats", "live drums", "strings", "brass"
+];
+```
+
+**Stage 2**: Rule-based genre mapping using detected characteristics
+
+```typescript
+const inferGenreFromCharacteristics = (scores: Record<string, number>): string => {
+  // High electronic + drums + synth = Techno/Electronic
+  if (scores["synthesizer"] > 0.5 && scores["electronic beats"] > 0.5 &&
+      scores["acoustic instruments"] < 0.2) {
+    return "techno";
+  }
+
+  // High orchestral + strings + low drums = Classical
+  if (scores["orchestral"] > 0.5 && scores["strings"] > 0.4 &&
+      scores["drums"] < 0.2) {
+    return "classical";
+  }
+
+  // High electric guitar + distortion + drums = Rock
+  if (scores["electric guitar"] > 0.5 && scores["distorted sounds"] > 0.3 &&
+      scores["drums"] > 0.4) {
+    return "rock";
+  }
+
+  // High vocals + acoustic + moderate drums = Pop
+  if (scores["vocals"] > 0.5 && scores["acoustic instruments"] > 0.3) {
+    return "pop";
+  }
+
+  // Fallback
+  return "unknown";
+};
+```
+
+**Advantages:**
+- More interpretable (can explain why)
+- Handles edge cases better
+- Can detect "mixed" genres
+
+**Disadvantages:**
+- Requires threshold tuning
+- Two-stage = more complex
+- Rule maintenance overhead
+
+---
+
+### Approach 3: Signature Sound Detection (Most Robust)
+
+Each genre has **unique sonic fingerprints** that are highly specific:
+
+| Genre | Signature Sounds (High Specificity) |
+|-------|-------------------------------------|
+| **Techno** | "four on the floor kick", "acid 303 bassline", "808 hi-hat", "synth stab", "techno arpeggio" |
+| **Classical** | "violin vibrato", "piano legato passage", "orchestral crescendo", "string quartet", "operatic vocals" |
+| **Jazz** | "walking upright bass", "swing ride cymbal", "jazz improvisation", "bebop", "jazz scat vocals" |
+| **Rock** | "power chord progression", "distorted guitar riff", "rock drum fill", "guitar feedback", "stadium rock" |
+| **Pop** | "auto-tuned vocals", "four chord progression", "pop hook", "radio-friendly", "produced vocals" |
+| **Hip-Hop** | "808 bass", "rap vocals", "hi-hat rolls", "sampled beat", "trap snare" |
+
+**Key Insight:** More specific prompts = stronger genre signal. "four on the floor kick" is much more indicative of Techno than just "kick drum".
+
+---
+
+### UI/UX Integration
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  [ 🎵 Music Tab ]                                             │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  🔗 URL: [________________________] [Load]                    │
+│                                                              │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │  🔮 Detected Genre: TECHNO (78% confidence)            │  │
+│  │  [Apply Techno Presets]  [Keep Current]                │  │
+│  └────────────────────────────────────────────────────────┘  │
+│                                                              │
+│  Genre Presets:                                              │
+│  [Techno ✓] [Classical] [Pop] [Rock] [Jazz] [All Music]     │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**User Flow:**
+1. User loads SoundCloud/audio URL
+2. First 10s of audio analyzed with multi-genre probe
+3. Toast/banner shows: "Detected: **Techno** (78% confidence)"
+4. User can "Apply" (auto-select Techno preset) or "Keep Current"
+5. Analysis continues with selected presets
+
+---
+
+### Confidence Thresholds
+
+| Confidence | Action |
+|------------|--------|
+| **> 70%** | Strong detection → Auto-suggest with prominent UI |
+| **50-70%** | Medium confidence → Show suggestion, muted UI |
+| **< 50%** | Low confidence → Don't suggest, show "Genre unclear" |
+
+---
+
+### Limitations & Considerations
+
+1. **FLAM wasn't trained for genre classification**
+   - It detects sounds/instruments, not genres directly
+   - Our approach infers genre from detected sounds
+
+2. **Genre fusion/crossover**
+   - Jazz-Rock, Pop-Electronic, etc. may confuse the system
+   - Solution: Return top 2-3 genres with percentages
+
+3. **Prompt quality matters**
+   - Generic prompts ("drums") → weak signal
+   - Specific prompts ("four on the floor techno kick") → strong signal
+
+4. **Cultural/temporal variation**
+   - "Rock" in 1970 ≠ "Rock" in 2020
+   - May need era-specific prompt sets
+
+---
+
+### Implementation Priority
+
+| Phase | Feature | Effort |
+|-------|---------|--------|
+| **Phase 1** | Multi-Genre Probe (basic) | 2-3 hours |
+| **Phase 2** | Confidence thresholds + UI | 1-2 hours |
+| **Phase 3** | Signature sound prompts | 2-3 hours |
+| **Phase 4** | Cascade detection (optional) | 4-6 hours |
+
+**Total MVP: ~4-5 hours**
 
 ---
 

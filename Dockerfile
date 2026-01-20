@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     nodejs \
     npm \
     git \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -24,6 +25,9 @@ RUN mkdir -p /app/backend/static && cp -r dist/* /app/backend/static/
 WORKDIR /app/backend
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir -e /app/openflam
+
+# Update yt-dlp to latest (YouTube frequently changes their API)
+RUN pip install --no-cache-dir --upgrade yt-dlp
 
 # Set environment variables
 ENV PYTHONPATH=/app/openflam/src
