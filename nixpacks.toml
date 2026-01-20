@@ -1,21 +1,20 @@
-# Python
-python-3.12
+# Nixpacks configuration for Railway deployment
 
-# System packages needed for audio processing
 [phases.setup]
-nixPkgs = ["ffmpeg"]
+nixPkgs = ["ffmpeg", "nodejs_20"]
 
-# Install Python dependencies
 [phases.install]
 cmds = [
     "cd backend && pip install -r requirements.txt",
     "pip install -e openflam"
 ]
 
-# Build frontend and copy to backend
 [phases.build]
 cmds = [
     "cd frontend && npm ci && npm run build",
     "rm -rf backend/static",
     "cp -r frontend/dist backend/static"
 ]
+
+[start]
+cmd = "cd backend && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"
