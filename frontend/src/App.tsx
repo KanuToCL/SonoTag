@@ -582,6 +582,15 @@ const [layoutMode, setLayoutMode] = useState<"immersive" | "classic">("immersive
   const [showVideoModalSearch, setShowVideoModalSearch] = useState(false);
   const [videoModalSearchUrl, setVideoModalSearchUrl] = useState("");
 
+  // Cumulative Statistics state
+  const [showStatsModal, setShowStatsModal] = useState(false);
+  const [statsModalPosition, setStatsModalPosition] = useState({ x: 100, y: 100 });
+  const [isDraggingStatsModal, setIsDraggingStatsModal] = useState(false);
+  const statsModalDragOffsetRef = useRef({ x: 0, y: 0 });
+  const [scoreHistory, setScoreHistory] = useState<Record<string, number[]>>({}); // All scores over time per label
+  const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
+  const [totalInferences, setTotalInferences] = useState<number>(0);
+
 // YouTube Analysis state
   const [youtubeUrl, setYoutubeUrl] = useState<string>("");
   const [youtubePreparing, setYoutubePreparing] = useState<boolean>(false);
@@ -893,6 +902,17 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
       const elapsedMs = performance.now() - startTime;
       setClassificationScores(result.global_scores);
       setFrameScores(result.frame_scores);
+      // Track cumulative statistics
+      setScoreHistory((prev) => {
+        const updated = { ...prev };
+        for (const [label, score] of Object.entries(result.global_scores)) {
+          if (!updated[label]) updated[label] = [];
+          updated[label].push(score);
+        }
+        return updated;
+      });
+      setTotalInferences((prev) => prev + 1);
+      if (!sessionStartTime) setSessionStartTime(Date.now());
       setLastInferenceTime(elapsedMs);
       setInferenceCount((prev) => prev + 1);
       if (result.timing) {
@@ -961,6 +981,17 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
       setClassificationScores(result.global_scores);
       // Store frame-wise scores for potential future use (temporal heatmap)
       setFrameScores(result.frame_scores);
+      // Track cumulative statistics
+      setScoreHistory((prev) => {
+        const updated = { ...prev };
+        for (const [label, score] of Object.entries(result.global_scores)) {
+          if (!updated[label]) updated[label] = [];
+          updated[label].push(score);
+        }
+        return updated;
+      });
+      setTotalInferences((prev) => prev + 1);
+      if (!sessionStartTime) setSessionStartTime(Date.now());
       setLastInferenceTime(elapsedMs);
       setInferenceCount((prev) => prev + 1);
       if (result.timing) {
@@ -1538,6 +1569,26 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                         Video
                       </button>
                     )}
+
+                      <button
+                        type="button"
+                        onClick={() => setShowStatsModal(!showStatsModal)}
+                        style={{
+                          padding: "8px 16px",
+                          fontSize: "13px",
+                          fontWeight: 500,
+                          color: showStatsModal ? "var(--accent)" : "var(--muted)",
+                          background: showStatsModal ? "rgba(255, 122, 61, 0.2)" : "rgba(15, 21, 32, 0.8)",
+                          border: "1px solid var(--border)",
+                          borderRadius: "8px",
+                          cursor: "pointer",
+                          transition: "all 0.2s ease",
+                          width: "100%",
+                        }}
+                        title={showStatsModal ? "Hide Stats" : "Show Cumulative Stats"}
+                      >
+                        📊 Stats
+                      </button>
                   </div>
               </div>
 
@@ -1923,7 +1974,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
         )}
 
         {/* Global mouse handlers for drag/resize */}
-        {(isDraggingModal || isResizingModal || isDraggingLabelsModal || isResizingLabelsModal || isDraggingPromptsModal || isResizingPromptsModal) && (
+        {(isDraggingModal || isResizingModal || isDraggingLabelsModal || isResizingLabelsModal || isDraggingPromptsModal || isResizingPromptsModal || isDraggingStatsModal) && (
           <div
             style={{
               position: "fixed",
@@ -1932,7 +1983,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               right: 0,
               bottom: 0,
               zIndex: 9999,
-              cursor: isDraggingModal || isDraggingLabelsModal || isDraggingPromptsModal ? "grabbing" : "ns-resize",
+              cursor: isDraggingModal || isDraggingLabelsModal || isDraggingPromptsModal || isDraggingStatsModal ? "grabbing" : "ns-resize",
             }}
             onMouseMove={(e) => {
               if (isDraggingModal) {
@@ -1963,6 +2014,11 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               } else if (isResizingPromptsModal) {
                 const deltaY = e.clientY - promptsModalResizeStartRef.current.mouseY;
                 setPromptsModalHeight(Math.max(200, Math.min(800, promptsModalResizeStartRef.current.height + deltaY)));
+              } else if (isDraggingStatsModal) {
+                setStatsModalPosition({
+                  x: Math.max(0, Math.min(window.innerWidth - 420, e.clientX - statsModalDragOffsetRef.current.x)),
+                  y: Math.max(0, Math.min(window.innerHeight - 400, e.clientY - statsModalDragOffsetRef.current.y)),
+                });
               }
             }}
             onMouseUp={() => {
@@ -1972,6 +2028,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               setIsResizingLabelsModal(false);
               setIsDraggingPromptsModal(false);
               setIsResizingPromptsModal(false);
+              setIsDraggingStatsModal(false);
             }}
             onMouseLeave={() => {
               setIsDraggingModal(false);
@@ -1980,6 +2037,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               setIsResizingLabelsModal(false);
               setIsDraggingPromptsModal(false);
               setIsResizingPromptsModal(false);
+              setIsDraggingStatsModal(false);
             }}
           />
         )}
@@ -2162,6 +2220,340 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                 borderRadius: "2px",
                 background: "rgba(255, 255, 255, 0.2)",
               }} />
+            </div>
+          </div>
+        )}
+
+        {/* Floating Stats Modal */}
+        {showStatsModal && (
+          <div
+            className="floating-video-modal floating-stats-modal"
+            style={{
+              position: "fixed",
+              left: statsModalPosition.x,
+              top: statsModalPosition.y,
+              width: 420,
+              maxHeight: "80vh",
+              zIndex: 502,
+              background: "rgba(15, 20, 30, 0.75)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              borderRadius: "12px",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4)",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {/* Drag handle - top bar */}
+            <div
+              className="modal-drag-handle"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setIsDraggingStatsModal(true);
+                statsModalDragOffsetRef.current = {
+                  x: e.clientX - statsModalPosition.x,
+                  y: e.clientY - statsModalPosition.y,
+                };
+              }}
+              style={{
+                height: "32px",
+                background: "transparent",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "0 12px",
+                cursor: "grab",
+                borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
+                flexShrink: 0,
+              }}
+            >
+              <span style={{ fontSize: "12px", color: "var(--text)", fontWeight: 500 }}>
+                📊 Cumulative Statistics
+              </span>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={() => {
+                    setScoreHistory({});
+                    setTotalInferences(0);
+                    setSessionStartTime(null);
+                  }}
+                  style={{
+                    background: "rgba(255, 100, 100, 0.2)",
+                    border: "1px solid rgba(255, 100, 100, 0.3)",
+                    borderRadius: "4px",
+                    color: "#ff6b6b",
+                    cursor: "pointer",
+                    fontSize: "10px",
+                    padding: "2px 8px",
+                  }}
+                  title="Reset statistics"
+                >
+                  Reset
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={() => setShowStatsModal(false)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "var(--muted)",
+                    cursor: "pointer",
+                    fontSize: "16px",
+                    padding: "2px 4px",
+                  }}
+                  title="Close"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            {/* Stats content */}
+            <div style={{
+              flex: 1,
+              overflowY: "auto",
+              padding: "12px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "16px",
+            }}>
+              {/* Session Summary */}
+              <div style={{
+                background: "rgba(0, 0, 0, 0.3)",
+                borderRadius: "8px",
+                padding: "12px",
+              }}>
+                <div style={{ fontSize: "10px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "8px" }}>
+                  Session Summary
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: "20px", fontWeight: 600, color: "var(--accent)" }}>
+                      {totalInferences}
+                    </div>
+                    <div style={{ fontSize: "9px", color: "var(--muted)", textTransform: "uppercase" }}>Inferences</div>
+                  </div>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: "20px", fontWeight: 600, color: "var(--accent-2)" }}>
+                      {sessionStartTime ? Math.floor((Date.now() - sessionStartTime) / 1000) : 0}s
+                    </div>
+                    <div style={{ fontSize: "9px", color: "var(--muted)", textTransform: "uppercase" }}>Duration</div>
+                  </div>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: "20px", fontWeight: 600, color: "var(--success)" }}>
+                      {prompts.length}
+                    </div>
+                    <div style={{ fontSize: "9px", color: "var(--muted)", textTransform: "uppercase" }}>Labels</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Gauges - Peak & Average per label */}
+              {Object.keys(scoreHistory).length > 0 && (
+                <div style={{
+                  background: "rgba(0, 0, 0, 0.3)",
+                  borderRadius: "8px",
+                  padding: "12px",
+                }}>
+                  <div style={{ fontSize: "10px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "10px" }}>
+                    Label Gauges (Peak / Average)
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    {(() => {
+                      const stats = Object.entries(scoreHistory).map(([label, scores]) => {
+                        const peak = Math.max(...scores);
+                        const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+                        const detectionCount = scores.filter(s => s > 0.5).length;
+                        const detectionPct = (detectionCount / scores.length) * 100;
+                        return { label, peak, avg, detectionPct, count: scores.length };
+                      }).sort((a, b) => b.avg - a.avg);
+
+                      return stats.slice(0, 8).map(({ label, peak, avg, detectionPct }) => (
+                        <div key={label} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <div style={{ width: "100px", fontSize: "10px", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={label}>
+                            {label.length > 14 ? `${label.slice(0, 14)}...` : label}
+                          </div>
+                          {/* Peak gauge */}
+                          <div style={{ flex: 1, height: "12px", background: "rgba(0, 0, 0, 0.4)", borderRadius: "6px", overflow: "hidden", position: "relative" }}>
+                            <div style={{
+                              width: `${Math.max(0, Math.min(100, peak * 100))}%`,
+                              height: "100%",
+                              background: "linear-gradient(90deg, var(--accent), #ff4d4d)",
+                              borderRadius: "6px",
+                            }} />
+                            <div style={{
+                              position: "absolute",
+                              left: `${Math.max(0, Math.min(95, avg * 100))}%`,
+                              top: 0,
+                              bottom: 0,
+                              width: "2px",
+                              background: "var(--accent-2)",
+                            }} />
+                          </div>
+                          <div style={{ width: "45px", fontSize: "9px", color: "var(--muted)", textAlign: "right" }}>
+                            {(peak * 100).toFixed(0)}% / {(avg * 100).toFixed(0)}%
+                          </div>
+                          <div style={{
+                            width: "32px",
+                            fontSize: "8px",
+                            padding: "2px 4px",
+                            borderRadius: "4px",
+                            textAlign: "center",
+                            background: detectionPct > 50 ? "rgba(92, 227, 162, 0.2)" : "rgba(255, 255, 255, 0.05)",
+                            color: detectionPct > 50 ? "var(--success)" : "var(--muted)",
+                          }}>
+                            {detectionPct.toFixed(0)}%
+                          </div>
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                </div>
+              )}
+
+              {/* CDF Distribution */}
+              {Object.keys(scoreHistory).length > 0 && (
+                <div style={{
+                  background: "rgba(0, 0, 0, 0.3)",
+                  borderRadius: "8px",
+                  padding: "12px",
+                }}>
+                  <div style={{ fontSize: "10px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "10px" }}>
+                    Score Distribution (CDF)
+                  </div>
+                  <div style={{ position: "relative", height: "120px", background: "rgba(0, 0, 0, 0.3)", borderRadius: "4px", padding: "8px" }}>
+                    <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+                      {/* Grid lines */}
+                      <line x1="0" y1="25" x2="100" y2="25" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" />
+                      <line x1="0" y1="50" x2="100" y2="50" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" />
+                      <line x1="0" y1="75" x2="100" y2="75" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" />
+                      <line x1="25" y1="0" x2="25" y2="100" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" />
+                      <line x1="50" y1="0" x2="50" y2="100" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" />
+                      <line x1="75" y1="0" x2="75" y2="100" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" />
+
+                      {/* CDF curves for top labels */}
+                      {(() => {
+                        const colors = ["#ff7a3d", "#2ad1ff", "#5ce3a2", "#ff6b6b", "#a78bfa"];
+                        const topLabels = Object.entries(scoreHistory)
+                          .map(([label, scores]) => ({ label, scores, avg: scores.reduce((a, b) => a + b, 0) / scores.length }))
+                          .sort((a, b) => b.avg - a.avg)
+                          .slice(0, 5);
+
+                        return topLabels.map(({ label, scores }, idx) => {
+                          const sorted = [...scores].sort((a, b) => a - b);
+                          const points = [];
+                          for (let i = 0; i <= 20; i++) {
+                            const threshold = i / 20;
+                            const countBelow = sorted.filter(s => s <= threshold).length;
+                            const cdf = countBelow / sorted.length;
+                            points.push(`${threshold * 100},${100 - cdf * 100}`);
+                          }
+                          return (
+                            <polyline
+                              key={label}
+                              points={points.join(" ")}
+                              fill="none"
+                              stroke={colors[idx % colors.length]}
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          );
+                        });
+                      })()}
+                    </svg>
+                    {/* X-axis labels */}
+                    <div style={{ position: "absolute", bottom: "-2px", left: "8px", right: "8px", display: "flex", justifyContent: "space-between", fontSize: "8px", color: "var(--muted)" }}>
+                      <span>0</span>
+                      <span>0.25</span>
+                      <span>0.5</span>
+                      <span>0.75</span>
+                      <span>1.0</span>
+                    </div>
+                  </div>
+                  {/* Legend */}
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "8px" }}>
+                    {(() => {
+                      const colors = ["#ff7a3d", "#2ad1ff", "#5ce3a2", "#ff6b6b", "#a78bfa"];
+                      return Object.entries(scoreHistory)
+                        .map(([label, scores]) => ({ label, avg: scores.reduce((a, b) => a + b, 0) / scores.length }))
+                        .sort((a, b) => b.avg - a.avg)
+                        .slice(0, 5)
+                        .map(({ label }, idx) => (
+                          <div key={label} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                            <div style={{ width: "8px", height: "8px", borderRadius: "2px", background: colors[idx % colors.length] }} />
+                            <span style={{ fontSize: "9px", color: "var(--muted)" }}>{label.length > 12 ? `${label.slice(0, 12)}...` : label}</span>
+                          </div>
+                        ));
+                    })()}
+                  </div>
+                </div>
+              )}
+
+              {/* Percentile Stats */}
+              {Object.keys(scoreHistory).length > 0 && (
+                <div style={{
+                  background: "rgba(0, 0, 0, 0.3)",
+                  borderRadius: "8px",
+                  padding: "12px",
+                }}>
+                  <div style={{ fontSize: "10px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "10px" }}>
+                    Percentiles (P25 / P50 / P75 / P90)
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    {(() => {
+                      const getPercentile = (arr: number[], p: number) => {
+                        const sorted = [...arr].sort((a, b) => a - b);
+                        const idx = Math.floor((p / 100) * sorted.length);
+                        return sorted[Math.min(idx, sorted.length - 1)] || 0;
+                      };
+
+                      return Object.entries(scoreHistory)
+                        .map(([label, scores]) => ({
+                          label,
+                          p25: getPercentile(scores, 25),
+                          p50: getPercentile(scores, 50),
+                          p75: getPercentile(scores, 75),
+                          p90: getPercentile(scores, 90),
+                          avg: scores.reduce((a, b) => a + b, 0) / scores.length,
+                        }))
+                        .sort((a, b) => b.avg - a.avg)
+                        .slice(0, 6)
+                        .map(({ label, p25, p50, p75, p90 }) => (
+                          <div key={label} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "9px" }}>
+                            <div style={{ width: "90px", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={label}>
+                              {label.length > 12 ? `${label.slice(0, 12)}...` : label}
+                            </div>
+                            <div style={{ display: "flex", gap: "4px" }}>
+                              <span style={{ padding: "2px 6px", background: "rgba(255, 122, 61, 0.2)", borderRadius: "3px", color: "#ff7a3d" }}>{(p25 * 100).toFixed(0)}</span>
+                              <span style={{ padding: "2px 6px", background: "rgba(42, 209, 255, 0.2)", borderRadius: "3px", color: "#2ad1ff" }}>{(p50 * 100).toFixed(0)}</span>
+                              <span style={{ padding: "2px 6px", background: "rgba(92, 227, 162, 0.2)", borderRadius: "3px", color: "#5ce3a2" }}>{(p75 * 100).toFixed(0)}</span>
+                              <span style={{ padding: "2px 6px", background: "rgba(167, 139, 250, 0.2)", borderRadius: "3px", color: "#a78bfa" }}>{(p90 * 100).toFixed(0)}</span>
+                            </div>
+                          </div>
+                        ));
+                    })()}
+                  </div>
+                </div>
+              )}
+
+              {/* Empty state */}
+              {Object.keys(scoreHistory).length === 0 && (
+                <div style={{
+                  textAlign: "center",
+                  padding: "40px 20px",
+                  color: "var(--muted)",
+                }}>
+                  <div style={{ fontSize: "32px", marginBottom: "12px" }}>📊</div>
+                  <div style={{ fontSize: "12px" }}>No data yet</div>
+                  <div style={{ fontSize: "10px", marginTop: "4px" }}>Start analyzing audio to see cumulative statistics</div>
+                </div>
+              )}
             </div>
           </div>
         )}
