@@ -1,7 +1,7 @@
 # SonoTag - Next Steps
 
 > **Last Updated**: January 20, 2026
-> **Current Phase**: Enhanced Stats modal with PDF/CDF visualizations, Top-Ranked tracking
+> **Current Phase**: UI polish - cleaner labels, improved chart tooltips
 
 ---
 
@@ -80,12 +80,20 @@
   - X-axis: Time (inference number chronologically)
   - Y-axis: Cumulative count of #1 rankings
   - Dynamic top 6 labels displayed
+  - **Legend layout: 2 rows × 3 columns grid**
 - [x] **PDF chart** - Probability density of median scores (bar histogram)
 - [x] **CDF chart** - Cumulative distribution with colored dots per label
+  - Hover tooltip shows label name near pointer
 - [x] **Score Histogram** - All individual scores with color-coded bins (red/yellow/green)
-- [x] **All Labels table** - Peak/Median gauges for ALL labels, sorted by median, scrollable
+  - Hover tooltip shows bin count near pointer (dynamic positioning)
+- [x] **All Labels table** - Peak/Median gauges for ALL labels, sorted by median or peak
+  - Toggle button to switch sort order between Median/Peak
 - [x] `topRankedHistory` state tracking which label was #1 at each inference
 - [x] Reset button clears all stats including topRankedHistory
+
+### UI Polish
+- [x] Removed emojis from status labels (Video playing, Microphone)
+- [x] Fixed histogram tooltip positioning bug on right side of chart
 
 ### Verified End-to-End
 ```bash

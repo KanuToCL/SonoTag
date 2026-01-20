@@ -2,7 +2,7 @@
 
 > **Last Updated**: January 20, 2026
 > **Project Status**: Active Development - Live inference working ✅
-> **Version**: 0.4.0
+> **Version**: 0.4.6
 > **Frontend**: TypeScript (React + Vite)
 > **Backend**: Python (FastAPI + OpenFLAM)
 

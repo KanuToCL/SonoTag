@@ -2464,8 +2464,8 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                       <span>now</span>
                     </div>
                   </div>
-                  {/* Legend - dynamic top 6 */}
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "8px" }}>
+                  {/* Legend - dynamic top 6 as 2 rows x 3 columns */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "6px 12px", marginTop: "8px" }}>
                     {(() => {
                       const colors = ["#ff7a3d", "#2ad1ff", "#5ce3a2", "#ff6b6b", "#a78bfa", "#fbbf24"];
                       const labelCounts: Record<string, number> = {};
@@ -2478,8 +2478,8 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                         .slice(0, 6)
                         .map(([label, count], idx) => (
                           <div key={label} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                            <div style={{ width: "8px", height: "8px", borderRadius: "2px", background: colors[idx % colors.length] }} />
-                            <span style={{ fontSize: "9px", color: "var(--muted)" }}>
+                            <div style={{ width: "8px", height: "8px", borderRadius: "2px", background: colors[idx % colors.length], flexShrink: 0 }} />
+                            <span style={{ fontSize: "9px", color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                               {label.length > 10 ? `${label.slice(0, 10)}...` : label} ({count})
                             </span>
                           </div>
@@ -2824,7 +2824,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                     {hoveredHistogramBin && hoveredHistogramBin.count > 0 && (
                       <div style={{
                         position: "absolute",
-                        left: `${Math.min(hoveredHistogramBin.x + 8, 220)}px`,
+                        left: hoveredHistogramBin.x > 200 ? `${hoveredHistogramBin.x - 28}px` : `${hoveredHistogramBin.x + 8}px`,
                         top: `${Math.max(hoveredHistogramBin.y - 16, 4)}px`,
                         background: "rgba(0, 0, 0, 0.85)",
                         padding: "2px 5px",
@@ -3179,7 +3179,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
             {inputMode === "youtube" && youtubeVideo ? (
               // Video is playing in floating modal - show minimal status
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span style={{ fontSize: "12px", color: "var(--muted)" }}>📺 Video playing</span>
+                <span style={{ fontSize: "12px", color: "var(--muted)" }}>Video playing</span>
                 {youtubeAnalyzing && (
                   <span style={{ fontSize: "11px", color: "var(--success)" }}>● Analyzing</span>
                 )}
@@ -3242,7 +3242,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               </div>
             ) : (
               <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <span style={{ fontSize: "12px", color: "var(--muted)" }}>🎙️ Microphone</span>
+                <span style={{ fontSize: "12px", color: "var(--muted)" }}>Microphone</span>
                 {status === "running" ? (
                   <button type="button" className="ghost" onClick={stopMonitoring} style={{ padding: "6px 12px", fontSize: "12px" }}>
                     Stop
