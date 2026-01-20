@@ -542,8 +542,11 @@ const [layoutMode, setLayoutMode] = useState<"immersive" | "classic">("immersive
   // Floating labels modal state (immersive mode)
   const [showLabelsModal, setShowLabelsModal] = useState(false);
   const [labelsModalPosition, setLabelsModalPosition] = useState({ x: 440, y: 20 });
+  const [labelsModalHeight, setLabelsModalHeight] = useState(400);
   const [isDraggingLabelsModal, setIsDraggingLabelsModal] = useState(false);
+  const [isResizingLabelsModal, setIsResizingLabelsModal] = useState(false);
   const labelsModalDragOffsetRef = useRef({ x: 0, y: 0 });
+  const labelsModalResizeStartRef = useRef({ height: 0, mouseY: 0 });
 
   // Inline search state for video modal
   const [showVideoModalSearch, setShowVideoModalSearch] = useState(false);
@@ -1858,7 +1861,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
         )}
 
         {/* Global mouse handlers for drag/resize */}
-        {(isDraggingModal || isResizingModal || isDraggingLabelsModal) && (
+        {(isDraggingModal || isResizingModal || isDraggingLabelsModal || isResizingLabelsModal) && (
           <div
             style={{
               position: "fixed",
@@ -1867,7 +1870,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               right: 0,
               bottom: 0,
               zIndex: 9999,
-              cursor: isDraggingModal || isDraggingLabelsModal ? "grabbing" : "nwse-resize",
+              cursor: isDraggingModal || isDraggingLabelsModal ? "grabbing" : "ns-resize",
             }}
             onMouseMove={(e) => {
               if (isDraggingModal) {
@@ -1885,19 +1888,24 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               } else if (isDraggingLabelsModal) {
                 setLabelsModalPosition({
                   x: Math.max(0, Math.min(window.innerWidth - 280, e.clientX - labelsModalDragOffsetRef.current.x)),
-                  y: Math.max(0, Math.min(window.innerHeight - 400, e.clientY - labelsModalDragOffsetRef.current.y)),
+                  y: Math.max(0, Math.min(window.innerHeight - labelsModalHeight, e.clientY - labelsModalDragOffsetRef.current.y)),
                 });
+              } else if (isResizingLabelsModal) {
+                const deltaY = e.clientY - labelsModalResizeStartRef.current.mouseY;
+                setLabelsModalHeight(Math.max(200, Math.min(800, labelsModalResizeStartRef.current.height + deltaY)));
               }
             }}
             onMouseUp={() => {
               setIsDraggingModal(false);
               setIsResizingModal(false);
               setIsDraggingLabelsModal(false);
+              setIsResizingLabelsModal(false);
             }}
             onMouseLeave={() => {
               setIsDraggingModal(false);
               setIsResizingModal(false);
               setIsDraggingLabelsModal(false);
+              setIsResizingLabelsModal(false);
             }}
           />
         )}
@@ -1911,7 +1919,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               left: labelsModalPosition.x,
               top: labelsModalPosition.y,
               width: 280,
-              maxHeight: 500,
+              height: labelsModalHeight,
               zIndex: 501,
               background: "rgba(0, 0, 0, 0.65)",
               borderRadius: "8px",
@@ -1950,6 +1958,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                 </span>
               <button
                 type="button"
+                onMouseDown={(e) => e.stopPropagation()}
                 onClick={() => setShowLabelsModal(false)}
                 style={{
                   background: "transparent",
@@ -2048,6 +2057,35 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                   );
                 });
               })()}
+            </div>
+
+            {/* Resize handle - bottom edge */}
+            <div
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setIsResizingLabelsModal(true);
+                labelsModalResizeStartRef.current = {
+                  height: labelsModalHeight,
+                  mouseY: e.clientY,
+                };
+              }}
+              style={{
+                height: "8px",
+                cursor: "ns-resize",
+                background: "rgba(15, 21, 32, 0.9)",
+                borderTop: "1px solid rgba(255, 255, 255, 0.05)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <div style={{
+                width: "40px",
+                height: "3px",
+                borderRadius: "2px",
+                background: "rgba(255, 255, 255, 0.2)",
+              }} />
             </div>
           </div>
         )}
