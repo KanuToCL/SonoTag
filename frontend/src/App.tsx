@@ -78,6 +78,26 @@ const DEFAULT_PROMPTS = [
   "footsteps",
 ];
 
+// Dialog/Movie prompts - sounds commonly found in film dialogue and drama
+const DIALOG_MOVIE_PROMPTS = [
+  "female speaker, woman speaking",
+  "male speaker, man speaking",
+  "whispering, soft voice",
+  "yelling, shouting",
+  "crying, sobbing",
+  "laughing, laughter",
+  "arguing, fighting",
+  "romantic music, passionate music",
+  "dramatic music, tension",
+  "suspenseful music, thriller",
+  "sad music, melancholic",
+  "happy music, upbeat",
+  "footsteps, walking",
+  "door opening, door closing",
+  "phone ringing, phone call",
+  "silence, quiet",
+];
+
 // Action Movie prompts - sounds commonly found in action films
 const ACTION_MOVIE_PROMPTS = [
   "explosion, blast",
@@ -547,6 +567,16 @@ const [layoutMode, setLayoutMode] = useState<"immersive" | "classic">("immersive
   const [isResizingLabelsModal, setIsResizingLabelsModal] = useState(false);
   const labelsModalDragOffsetRef = useRef({ x: 0, y: 0 });
   const labelsModalResizeStartRef = useRef({ height: 0, mouseY: 0 });
+
+  // Floating prompts modal state (immersive mode)
+  const [showPromptsModal, setShowPromptsModal] = useState(false);
+  const [promptsModalPosition, setPromptsModalPosition] = useState({ x: 740, y: 20 });
+  const [promptsModalHeight, setPromptsModalHeight] = useState(400);
+  const [isDraggingPromptsModal, setIsDraggingPromptsModal] = useState(false);
+  const [isResizingPromptsModal, setIsResizingPromptsModal] = useState(false);
+  const promptsModalDragOffsetRef = useRef({ x: 0, y: 0 });
+  const promptsModalResizeStartRef = useRef({ height: 0, mouseY: 0 });
+  const [promptsModalInput, setPromptsModalInput] = useState("");
 
   // Inline search state for video modal
   const [showVideoModalSearch, setShowVideoModalSearch] = useState(false);
@@ -1434,82 +1464,90 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                   />
                 </div>
                 {/* Quick Action Buttons - in the spacer area on the right */}
-                <div className="spectrogram-label-spacer" style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "flex-start",
-                  justifyContent: "flex-start",
-                  gap: "8px",
-                  padding: "8px 12px",
-                }}>
-                  <button
-                    type="button"
-                    onClick={() => setShowLabelsModal(!showLabelsModal)}
-                    className="quick-action-btn"
-                    style={{
-                      background: showLabelsModal ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.4)",
-                      border: "1px solid rgba(255, 255, 255, 0.1)",
-                      borderRadius: "4px",
-                      padding: "6px 12px",
-                      fontSize: "11px",
-                      color: showLabelsModal ? "var(--text)" : "var(--muted)",
-                      cursor: "pointer",
+                  <div className="spectrogram-label-spacer" style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "flex-start",
+                    justifyContent: "flex-start",
+                    gap: "8px",
+                    padding: "8px 12px",
+                  }}>
+                    {/* Button group container matching top bar style */}
+                    <div style={{
                       display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.5px",
-                      transition: "all 0.2s ease",
-                      width: "100%",
-                    }}
-                    title={showLabelsModal ? "Hide Labels panel" : "Show Labels panel"}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
-                      <line x1="7" y1="7" x2="7.01" y2="7" />
-                    </svg>
-                    Labels
-                  </button>
+                      flexDirection: "column",
+                      background: "rgba(15, 21, 32, 0.8)",
+                      borderRadius: "8px",
+                      border: "1px solid var(--border)",
+                      overflow: "hidden",
+                    }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowLabelsModal(!showLabelsModal)}
+                        style={{
+                          padding: "8px 16px",
+                          fontSize: "13px",
+                          fontWeight: 500,
+                          color: showLabelsModal ? "var(--accent)" : "var(--muted)",
+                          background: showLabelsModal ? "rgba(255, 122, 61, 0.2)" : "transparent",
+                          border: "none",
+                          borderBottom: "1px solid var(--border)",
+                          cursor: "pointer",
+                          transition: "all 0.2s ease",
+                          textAlign: "left",
+                        }}
+                        title={showLabelsModal ? "Hide Labels panel" : "Show Labels panel"}
+                      >
+                        Labels
+                      </button>
 
-                  {inputMode === "youtube" && youtubeVideo && (
-                    <button
-                      type="button"
-                      onClick={() => setShowVideoModal(!showVideoModal)}
-                      className="quick-action-btn"
-                      style={{
-                        background: showVideoModal ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.4)",
-                        border: "1px solid rgba(255, 255, 255, 0.1)",
-                        borderRadius: "4px",
-                        padding: "6px 12px",
-                        fontSize: "11px",
-                        color: showVideoModal ? "var(--text)" : "var(--muted)",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.5px",
-                        transition: "all 0.2s ease",
-                        width: "100%",
-                      }}
-                      title={showVideoModal ? "Hide Video" : "Show Video"}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        {showVideoModal ? (
-                          <>
-                            <path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z" />
-                          </>
-                        ) : (
-                          <>
-                            <path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z" />
-                            <line x1="1" y1="1" x2="23" y2="23" />
-                          </>
-                        )}
-                      </svg>
-                      Video
-                    </button>
-                  )}
-                </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowPromptsModal(!showPromptsModal);
+                          if (!showPromptsModal) {
+                            setPromptsModalInput(prompts.join("; "));
+                          }
+                        }}
+                        style={{
+                          padding: "8px 16px",
+                          fontSize: "13px",
+                          fontWeight: 500,
+                          color: showPromptsModal ? "var(--accent)" : "var(--muted)",
+                          background: showPromptsModal ? "rgba(255, 122, 61, 0.2)" : "transparent",
+                          border: "none",
+                          borderBottom: inputMode === "youtube" && youtubeVideo ? "1px solid var(--border)" : "none",
+                          cursor: "pointer",
+                          transition: "all 0.2s ease",
+                          textAlign: "left",
+                        }}
+                        title={showPromptsModal ? "Hide Prompts panel" : "Edit Prompts"}
+                      >
+                        Prompts
+                      </button>
+
+                      {inputMode === "youtube" && youtubeVideo && (
+                        <button
+                          type="button"
+                          onClick={() => setShowVideoModal(!showVideoModal)}
+                          style={{
+                            padding: "8px 16px",
+                            fontSize: "13px",
+                            fontWeight: 500,
+                            color: showVideoModal ? "var(--accent)" : "var(--muted)",
+                            background: showVideoModal ? "rgba(255, 122, 61, 0.2)" : "transparent",
+                            border: "none",
+                            cursor: "pointer",
+                            transition: "all 0.2s ease",
+                            textAlign: "left",
+                          }}
+                          title={showVideoModal ? "Hide Video" : "Show Video"}
+                        >
+                          Video
+                        </button>
+                      )}
+                    </div>
+                  </div>
               </div>
 
               {/* Heatmap with Dynamic Labels */}
@@ -1894,7 +1932,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
         )}
 
         {/* Global mouse handlers for drag/resize */}
-        {(isDraggingModal || isResizingModal || isDraggingLabelsModal || isResizingLabelsModal) && (
+        {(isDraggingModal || isResizingModal || isDraggingLabelsModal || isResizingLabelsModal || isDraggingPromptsModal || isResizingPromptsModal) && (
           <div
             style={{
               position: "fixed",
@@ -1903,7 +1941,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               right: 0,
               bottom: 0,
               zIndex: 9999,
-              cursor: isDraggingModal || isDraggingLabelsModal ? "grabbing" : "ns-resize",
+              cursor: isDraggingModal || isDraggingLabelsModal || isDraggingPromptsModal ? "grabbing" : "ns-resize",
             }}
             onMouseMove={(e) => {
               if (isDraggingModal) {
@@ -1926,6 +1964,14 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               } else if (isResizingLabelsModal) {
                 const deltaY = e.clientY - labelsModalResizeStartRef.current.mouseY;
                 setLabelsModalHeight(Math.max(200, Math.min(800, labelsModalResizeStartRef.current.height + deltaY)));
+              } else if (isDraggingPromptsModal) {
+                setPromptsModalPosition({
+                  x: Math.max(0, Math.min(window.innerWidth - 320, e.clientX - promptsModalDragOffsetRef.current.x)),
+                  y: Math.max(0, Math.min(window.innerHeight - promptsModalHeight, e.clientY - promptsModalDragOffsetRef.current.y)),
+                });
+              } else if (isResizingPromptsModal) {
+                const deltaY = e.clientY - promptsModalResizeStartRef.current.mouseY;
+                setPromptsModalHeight(Math.max(200, Math.min(800, promptsModalResizeStartRef.current.height + deltaY)));
               }
             }}
             onMouseUp={() => {
@@ -1933,12 +1979,16 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               setIsResizingModal(false);
               setIsDraggingLabelsModal(false);
               setIsResizingLabelsModal(false);
+              setIsDraggingPromptsModal(false);
+              setIsResizingPromptsModal(false);
             }}
             onMouseLeave={() => {
               setIsDraggingModal(false);
               setIsResizingModal(false);
               setIsDraggingLabelsModal(false);
               setIsResizingLabelsModal(false);
+              setIsDraggingPromptsModal(false);
+              setIsResizingPromptsModal(false);
             }}
           />
         )}
@@ -2108,6 +2158,223 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                 height: "8px",
                 cursor: "ns-resize",
                 background: "rgba(15, 21, 32, 0.9)",
+                borderTop: "1px solid rgba(255, 255, 255, 0.05)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <div style={{
+                width: "40px",
+                height: "3px",
+                borderRadius: "2px",
+                background: "rgba(255, 255, 255, 0.2)",
+              }} />
+            </div>
+          </div>
+        )}
+
+        {/* Floating Prompts Modal */}
+        {showPromptsModal && (
+          <div
+            className="floating-video-modal floating-labels-modal"
+            style={{
+              position: "fixed",
+              left: promptsModalPosition.x,
+              top: promptsModalPosition.y,
+              width: 320,
+              height: promptsModalHeight,
+              zIndex: 502,
+              background: "rgba(15, 20, 30, 0.55)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              borderRadius: "8px",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4)",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {/* Drag handle - top bar */}
+            <div
+              className="modal-drag-handle"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setIsDraggingPromptsModal(true);
+                promptsModalDragOffsetRef.current = {
+                  x: e.clientX - promptsModalPosition.x,
+                  y: e.clientY - promptsModalPosition.y,
+                };
+              }}
+              style={{
+                height: "28px",
+                background: "transparent",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "0 10px",
+                cursor: "grab",
+                borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
+                flexShrink: 0,
+              }}
+            >
+              <span style={{ fontSize: "11px", color: "var(--muted)" }}>
+                Prompts
+              </span>
+              <button
+                type="button"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={() => setShowPromptsModal(false)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--muted)",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  padding: "2px 4px",
+                }}
+                title="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Presets section */}
+            <div style={{
+              padding: "8px",
+              borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "6px",
+            }}>
+              <span style={{ fontSize: "9px", color: "var(--muted)", width: "100%", marginBottom: "4px" }}>
+                PRESETS
+              </span>
+              {[
+                { name: "Default", prompts: DEFAULT_PROMPTS },
+                { name: "Dialog", prompts: DIALOG_MOVIE_PROMPTS },
+                { name: "Action", prompts: ACTION_MOVIE_PROMPTS },
+                { name: "Sports", prompts: SPORTS_PROMPTS },
+                { name: "Music", prompts: MUSIC_DECOMPOSITION_PROMPTS },
+              ].map((preset) => (
+                <button
+                  key={preset.name}
+                  type="button"
+                  onClick={() => {
+                    setPromptsModalInput(preset.prompts.join("; "));
+                  }}
+                  style={{
+                    padding: "4px 10px",
+                    fontSize: "10px",
+                    background: promptsModalInput === preset.prompts.join("; ")
+                      ? "rgba(255, 122, 61, 0.2)"
+                      : "rgba(255, 255, 255, 0.05)",
+                    border: "1px solid rgba(255, 255, 255, 0.1)",
+                    borderRadius: "4px",
+                    color: promptsModalInput === preset.prompts.join("; ")
+                      ? "var(--accent)"
+                      : "var(--muted)",
+                    cursor: "pointer",
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  {preset.name}
+                </button>
+              ))}
+            </div>
+
+            {/* Prompts textarea */}
+            <div style={{
+              flex: 1,
+              padding: "8px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+              overflow: "hidden",
+            }}>
+              <textarea
+                value={promptsModalInput}
+                onChange={(e) => setPromptsModalInput(e.target.value)}
+                placeholder="Enter prompts separated by semicolons..."
+                style={{
+                  flex: 1,
+                  background: "rgba(0, 0, 0, 0.3)",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  borderRadius: "4px",
+                  padding: "8px",
+                  fontSize: "11px",
+                  color: "var(--text)",
+                  resize: "none",
+                  fontFamily: "inherit",
+                }}
+              />
+              <div style={{ display: "flex", gap: "6px" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newPrompts = promptsModalInput
+                      .split(";")
+                      .map((s) => s.trim())
+                      .filter((s) => s.length > 0);
+                    if (newPrompts.length > 0) {
+                      setPrompts(newPrompts);
+                      setPromptInput(promptsModalInput);
+                      promptsRef.current = newPrompts;
+                      setShowPromptsModal(false);
+                    }
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: "8px",
+                    fontSize: "11px",
+                    fontWeight: 500,
+                    background: "rgba(255, 122, 61, 0.2)",
+                    border: "1px solid var(--accent)",
+                    borderRadius: "4px",
+                    color: "var(--accent)",
+                    cursor: "pointer",
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  Apply
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPromptsModalInput(prompts.join("; "));
+                  }}
+                  style={{
+                    padding: "8px 12px",
+                    fontSize: "11px",
+                    background: "rgba(255, 255, 255, 0.05)",
+                    border: "1px solid rgba(255, 255, 255, 0.1)",
+                    borderRadius: "4px",
+                    color: "var(--muted)",
+                    cursor: "pointer",
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+
+            {/* Resize handle - bottom edge */}
+            <div
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setIsResizingPromptsModal(true);
+                promptsModalResizeStartRef.current = {
+                  height: promptsModalHeight,
+                  mouseY: e.clientY,
+                };
+              }}
+              style={{
+                height: "8px",
+                cursor: "ns-resize",
+                background: "transparent",
                 borderTop: "1px solid rgba(255, 255, 255, 0.05)",
                 display: "flex",
                 alignItems: "center",
