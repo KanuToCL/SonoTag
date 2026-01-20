@@ -1,8 +1,8 @@
 # SonoTag / FLAM Browser - Developer Onboarding Guide
 
-> **Last Updated**: January 19, 2026
+> **Last Updated**: January 20, 2026
 > **Project Status**: Active Development - Live inference working ✅
-> **Version**: 0.3.0
+> **Version**: 0.4.0
 > **Frontend**: TypeScript (React + Vite)
 > **Backend**: Python (FastAPI + OpenFLAM)
 
@@ -51,6 +51,9 @@ Users need a way to:
 | Modal Transparency | ✅ Done | Glassmorphism effect on modals |
 | Soft Edge Fades | ✅ Done | Gradient borders on visualizations |
 | Labels Modal | ✅ Done | Floating labels panel with main window button |
+| Stats Modal | ✅ Done | Cumulative statistics with PDF/CDF/Histogram charts |
+| Top-Ranked Tracking | ✅ Done | Track which label was #1 at each inference |
+| Video Modal Centered | ✅ Done | Video modal appears centered on first open |
 | Webcam Floating Modal | 📋 Planned | Camera feed in draggable modal (mic mode) |
 | WebSocket Streaming | 📋 Planned | Low-latency audio chunk streaming |
 | Backend Thread Pool | 📋 Planned | Concurrent inference requests |

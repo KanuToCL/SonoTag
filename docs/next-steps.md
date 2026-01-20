@@ -1,7 +1,7 @@
 # SonoTag - Next Steps
 
-> **Last Updated**: January 19, 2026
-> **Current Phase**: Live inference with frame-wise detection, immersive UI enhancements
+> **Last Updated**: January 20, 2026
+> **Current Phase**: Enhanced Stats modal with PDF/CDF visualizations, Top-Ranked tracking
 
 ---
 
@@ -63,6 +63,7 @@
 - [x] Real-time FLAM analysis of video audio
 - [x] Video modal search icon with inline URL input (keeps current video playing)
 - [x] Modal transparency (0.65 opacity) for immersive feel
+- [x] **Video modal initial position centered on screen** (not top-left)
 
 ### Immersive UI/UX Enhancements
 - [x] Glassmorphism design with blur effects and transparency
@@ -73,6 +74,18 @@
 - [x] Labels button in main window (heatmap section)
 - [x] Color theme selector (multiple palettes)
 - [x] Collapsible settings panel
+
+### Stats Modal Enhancements (NEW)
+- [x] **Top-Ranked Count Over Time chart** - Tracks which label was #1 at each inference
+  - X-axis: Time (inference number chronologically)
+  - Y-axis: Cumulative count of #1 rankings
+  - Dynamic top 6 labels displayed
+- [x] **PDF chart** - Probability density of median scores (bar histogram)
+- [x] **CDF chart** - Cumulative distribution with colored dots per label
+- [x] **Score Histogram** - All individual scores with color-coded bins (red/yellow/green)
+- [x] **All Labels table** - Peak/Median gauges for ALL labels, sorted by median, scrollable
+- [x] `topRankedHistory` state tracking which label was #1 at each inference
+- [x] Reset button clears all stats including topRankedHistory
 
 ### Verified End-to-End
 ```bash

@@ -552,7 +552,7 @@ const [layoutMode, setLayoutMode] = useState<"immersive" | "classic">("immersive
 
   // Immersive video modal state
   const [showVideoModal, setShowVideoModal] = useState(true); // Video modal visibility toggle
-  const [videoModalPosition, setVideoModalPosition] = useState({ x: 20, y: 20 });
+  const [videoModalPosition, setVideoModalPosition] = useState({ x: Math.max(20, (window.innerWidth - 450) / 2), y: Math.max(20, (window.innerHeight - 400) / 2 - 100) });
   const [videoModalSize, setVideoModalSize] = useState({ width: 400, height: 280 });
   const [isDraggingModal, setIsDraggingModal] = useState(false);
   const [isResizingModal, setIsResizingModal] = useState(false);
@@ -588,6 +588,7 @@ const [layoutMode, setLayoutMode] = useState<"immersive" | "classic">("immersive
   const [isDraggingStatsModal, setIsDraggingStatsModal] = useState(false);
   const statsModalDragOffsetRef = useRef({ x: 0, y: 0 });
   const [scoreHistory, setScoreHistory] = useState<Record<string, number[]>>({}); // All scores over time per label
+  const [topRankedHistory, setTopRankedHistory] = useState<string[]>([]); // Which label was #1 at each inference (chronological)
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
   const [totalInferences, setTotalInferences] = useState<number>(0);
 
@@ -911,6 +912,11 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
         }
         return updated;
       });
+      // Track which label was top-ranked (#1) at this inference
+      const topLabel = Object.entries(result.global_scores).reduce((best, [label, score]) =>
+        score > best.score ? { label, score } : best, { label: "", score: -1 }
+      ).label;
+      if (topLabel) setTopRankedHistory((prev) => [...prev, topLabel]);
       setTotalInferences((prev) => prev + 1);
       if (!sessionStartTime) setSessionStartTime(Date.now());
       setLastInferenceTime(elapsedMs);
@@ -990,6 +996,11 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
         }
         return updated;
       });
+      // Track which label was top-ranked (#1) at this inference
+      const topLabel = Object.entries(result.global_scores).reduce((best, [label, score]) =>
+        score > best.score ? { label, score } : best, { label: "", score: -1 }
+      ).label;
+      if (topLabel) setTopRankedHistory((prev) => [...prev, topLabel]);
       setTotalInferences((prev) => prev + 1);
       if (!sessionStartTime) setSessionStartTime(Date.now());
       setLastInferenceTime(elapsedMs);
@@ -2278,6 +2289,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                   onMouseDown={(e) => e.stopPropagation()}
                   onClick={() => {
                     setScoreHistory({});
+                    setTopRankedHistory([]);
                     setTotalInferences(0);
                     setSessionStartTime(null);
                   }}
@@ -2350,74 +2362,131 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                     </div>
                     <div style={{ fontSize: "9px", color: "var(--muted)", textTransform: "uppercase" }}>Labels</div>
                   </div>
-                </div>
               </div>
+            </div>
 
-              {/* Gauges - Peak & Average per label */}
-              {Object.keys(scoreHistory).length > 0 && (
+              {/* Top-Ranked Over Time */}
+              {topRankedHistory.length > 0 && (
                 <div style={{
                   background: "rgba(0, 0, 0, 0.3)",
                   borderRadius: "8px",
                   padding: "12px",
                 }}>
-                  <div style={{ fontSize: "10px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "10px" }}>
-                    Label Gauges (Peak / Average)
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                    <div style={{ fontSize: "10px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "1px" }}>
+                      Top-Ranked Count Over Time
+                    </div>
+                    <div style={{ fontSize: "9px", color: "var(--muted)" }}>
+                      n={topRankedHistory.length}
+                    </div>
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  <div style={{ position: "relative", height: "120px", background: "rgba(0, 0, 0, 0.3)", borderRadius: "4px", padding: "8px" }}>
                     {(() => {
-                      const stats = Object.entries(scoreHistory).map(([label, scores]) => {
-                        const peak = Math.max(...scores);
-                        const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-                        const detectionCount = scores.filter(s => s > 0.5).length;
-                        const detectionPct = (detectionCount / scores.length) * 100;
-                        return { label, peak, avg, detectionPct, count: scores.length };
-                      }).sort((a, b) => b.avg - a.avg);
+                      const colors = ["#ff7a3d", "#2ad1ff", "#5ce3a2", "#ff6b6b", "#a78bfa", "#fbbf24"];
 
-                      return stats.slice(0, 8).map(({ label, peak, avg, detectionPct }) => (
-                        <div key={label} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <div style={{ width: "100px", fontSize: "10px", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={label}>
-                            {label.length > 14 ? `${label.slice(0, 14)}...` : label}
+                      // Build cumulative counts over time for each label
+                      // At each time step, record the running count for ALL labels seen so far
+                      const runningCounts: Record<string, number> = {};
+                      const timeSeriesData: Array<Record<string, number>> = [];
+
+                      topRankedHistory.forEach((winningLabel) => {
+                        // Increment the count for the label that won this time step
+                        runningCounts[winningLabel] = (runningCounts[winningLabel] || 0) + 1;
+                        // Snapshot all current counts at this time step
+                        timeSeriesData.push({ ...runningCounts });
+                      });
+
+                      // Get final counts and determine top 6
+                      const finalCounts = timeSeriesData.length > 0 ? timeSeriesData[timeSeriesData.length - 1] : {};
+                      const top6Labels = Object.entries(finalCounts)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 6)
+                        .map(([label]) => label);
+
+                      const maxCount = Math.max(...Object.values(finalCounts).map(Number), 1);
+                      const totalSteps = topRankedHistory.length;
+
+                      return (
+                        <>
+                          <svg
+                            key={`top-ranked-${topRankedHistory.length}`}
+                            width="100%"
+                            height="100%"
+                            viewBox="0 0 100 100"
+                            preserveAspectRatio="none"
+                          >
+                            {/* Grid lines */}
+                            <line x1="0" y1="25" x2="100" y2="25" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" />
+                            <line x1="0" y1="50" x2="100" y2="50" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" />
+                            <line x1="0" y1="75" x2="100" y2="75" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" />
+
+                            {/* Cumulative count curves for top 6 labels */}
+                            {top6Labels.map((label, idx) => {
+                              // Build points from time series - use 0 if label hasn't appeared yet
+                              const points = timeSeriesData.map((snapshot, i) => {
+                                const count = snapshot[label] || 0;
+                                const x = totalSteps > 1 ? (i / (totalSteps - 1)) * 100 : 50;
+                                const y = 100 - (count / maxCount) * 100;
+                                return `${x},${y}`;
+                              }).join(" ");
+
+                              return (
+                                <polyline
+                                  key={`${label}-${totalSteps}`}
+                                  points={points}
+                                  fill="none"
+                                  stroke={colors[idx % colors.length]}
+                                  strokeWidth="1.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              );
+                            })}
+                          </svg>
+                          {/* Y-axis labels */}
+                          <div style={{ position: "absolute", top: "4px", left: "4px", fontSize: "8px", color: "var(--muted)" }}>
+                            {maxCount}
                           </div>
-                          {/* Peak gauge */}
-                          <div style={{ flex: 1, height: "12px", background: "rgba(0, 0, 0, 0.4)", borderRadius: "6px", overflow: "hidden", position: "relative" }}>
-                            <div style={{
-                              width: `${Math.max(0, Math.min(100, peak * 100))}%`,
-                              height: "100%",
-                              background: "linear-gradient(90deg, var(--accent), #ff4d4d)",
-                              borderRadius: "6px",
-                            }} />
-                            <div style={{
-                              position: "absolute",
-                              left: `${Math.max(0, Math.min(95, avg * 100))}%`,
-                              top: 0,
-                              bottom: 0,
-                              width: "2px",
-                              background: "var(--accent-2)",
-                            }} />
+                          <div style={{ position: "absolute", bottom: "4px", left: "4px", fontSize: "8px", color: "var(--muted)" }}>
+                            0
                           </div>
-                          <div style={{ width: "45px", fontSize: "9px", color: "var(--muted)", textAlign: "right" }}>
-                            {(peak * 100).toFixed(0)}% / {(avg * 100).toFixed(0)}%
+                        </>
+                      );
+                    })()}
+                    {/* X-axis labels */}
+                    <div style={{ position: "absolute", bottom: "-2px", left: "8px", right: "8px", display: "flex", justifyContent: "space-between", fontSize: "8px", color: "var(--muted)" }}>
+                      <span>start</span>
+                      <span>time</span>
+                      <span>now</span>
+                    </div>
+                  </div>
+                  {/* Legend - dynamic top 6 */}
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "8px" }}>
+                    {(() => {
+                      const colors = ["#ff7a3d", "#2ad1ff", "#5ce3a2", "#ff6b6b", "#a78bfa", "#fbbf24"];
+                      const labelCounts: Record<string, number> = {};
+                      topRankedHistory.forEach((label) => {
+                        labelCounts[label] = (labelCounts[label] || 0) + 1;
+                      });
+
+                      return Object.entries(labelCounts)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 6)
+                        .map(([label, count], idx) => (
+                          <div key={label} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                            <div style={{ width: "8px", height: "8px", borderRadius: "2px", background: colors[idx % colors.length] }} />
+                            <span style={{ fontSize: "9px", color: "var(--muted)" }}>
+                              {label.length > 10 ? `${label.slice(0, 10)}...` : label} ({count})
+                            </span>
                           </div>
-                          <div style={{
-                            width: "32px",
-                            fontSize: "8px",
-                            padding: "2px 4px",
-                            borderRadius: "4px",
-                            textAlign: "center",
-                            background: detectionPct > 50 ? "rgba(92, 227, 162, 0.2)" : "rgba(255, 255, 255, 0.05)",
-                            color: detectionPct > 50 ? "var(--success)" : "var(--muted)",
-                          }}>
-                            {detectionPct.toFixed(0)}%
-                          </div>
-                        </div>
-                      ));
+                        ));
                     })()}
                   </div>
                 </div>
               )}
 
-              {/* CDF Distribution */}
-              {Object.keys(scoreHistory).length > 0 && (
+              {/* CDF Distribution - hidden for now */}
+              {false && Object.keys(scoreHistory).length > 0 && (
                 <div style={{
                   background: "rgba(0, 0, 0, 0.3)",
                   borderRadius: "8px",
@@ -2447,12 +2516,17 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                       <line x1="50" y1="0" x2="50" y2="100" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" />
                       <line x1="75" y1="0" x2="75" y2="100" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" />
 
-                      {/* CDF curves for top labels */}
+                      {/* CDF curves for top labels (ordered by top-ranked count) */}
                       {(() => {
                         const colors = ["#ff7a3d", "#2ad1ff", "#5ce3a2", "#ff6b6b", "#a78bfa"];
+                        const labelTopCounts: Record<string, number> = {};
+                        topRankedHistory.forEach((label) => {
+                          labelTopCounts[label] = (labelTopCounts[label] || 0) + 1;
+                        });
+
                         const topLabels = Object.entries(scoreHistory)
-                          .map(([label, scores]) => ({ label, scores, avg: scores.reduce((a, b) => a + b, 0) / scores.length }))
-                          .sort((a, b) => b.avg - a.avg)
+                          .map(([label, scores]) => ({ label, scores, topCount: labelTopCounts[label] || 0 }))
+                          .sort((a, b) => b.topCount - a.topCount)
                           .slice(0, 5);
 
                         return topLabels.map(({ label, scores }, idx) => {
@@ -2491,9 +2565,14 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "8px" }}>
                     {(() => {
                       const colors = ["#ff7a3d", "#2ad1ff", "#5ce3a2", "#ff6b6b", "#a78bfa"];
+                      const labelTopCounts: Record<string, number> = {};
+                      topRankedHistory.forEach((label) => {
+                        labelTopCounts[label] = (labelTopCounts[label] || 0) + 1;
+                      });
+
                       return Object.entries(scoreHistory)
-                        .map(([label, scores]) => ({ label, avg: scores.reduce((a, b) => a + b, 0) / scores.length }))
-                        .sort((a, b) => b.avg - a.avg)
+                        .map(([label]) => ({ label, topCount: labelTopCounts[label] || 0 }))
+                        .sort((a, b) => b.topCount - a.topCount)
                         .slice(0, 5)
                         .map(({ label }, idx) => (
                           <div key={label} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
@@ -2506,48 +2585,250 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                 </div>
               )}
 
-              {/* Percentile Stats */}
+              {/* PDF - Probability Density of Median Scores */}
               {Object.keys(scoreHistory).length > 0 && (
                 <div style={{
                   background: "rgba(0, 0, 0, 0.3)",
                   borderRadius: "8px",
                   padding: "12px",
                 }}>
-                  <div style={{ fontSize: "10px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "10px" }}>
-                    Percentiles (P25 / P50 / P75 / P90)
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                    <div style={{ fontSize: "10px", color: "#ff7a3d", textTransform: "uppercase", letterSpacing: "1px" }}>
+                      PDF (Median Density)
+                    </div>
+                    <div style={{ fontSize: "9px", color: "var(--muted)" }}>
+                      {Object.keys(scoreHistory).length} labels
+                    </div>
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <div style={{ position: "relative", height: "80px", background: "rgba(0, 0, 0, 0.3)", borderRadius: "4px", padding: "8px" }}>
                     {(() => {
-                      const getPercentile = (arr: number[], p: number) => {
-                        const sorted = [...arr].sort((a, b) => a - b);
-                        const idx = Math.floor((p / 100) * sorted.length);
-                        return sorted[Math.min(idx, sorted.length - 1)] || 0;
+                      const medians = Object.entries(scoreHistory).map(([label, scores]) => {
+                        const sorted = [...scores].sort((a, b) => a - b);
+                        const median = sorted[Math.floor(sorted.length / 2)] || 0;
+                        return { label, median };
+                      });
+
+                      const numBins = 20;
+                      const bins: number[] = new Array(numBins).fill(0);
+                      medians.forEach(({ median }) => {
+                        const binIdx = Math.min(Math.floor(median * numBins), numBins - 1);
+                        bins[binIdx]++;
+                      });
+
+                      const maxBin = Math.max(...bins, 1);
+
+                      return (
+                        <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+                          <line x1="0" y1="50" x2="100" y2="50" stroke="rgba(255,255,255,0.1)" strokeWidth="0.3" />
+                          {bins.map((count, i) => {
+                            const x = (i / numBins) * 100;
+                            const width = 100 / numBins - 0.5;
+                            const height = (count / maxBin) * 90;
+                            return (
+                              <rect
+                                key={i}
+                                x={x}
+                                y={100 - height}
+                                width={width}
+                                height={height}
+                                fill="rgba(255, 122, 61, 0.6)"
+                                stroke="#ff7a3d"
+                                strokeWidth="0.5"
+                              />
+                            );
+                          })}
+                        </svg>
+                      );
+                    })()}
+                    <div style={{ position: "absolute", bottom: "-2px", left: "8px", right: "8px", display: "flex", justifyContent: "space-between", fontSize: "7px", color: "var(--muted)" }}>
+                      <span>0</span>
+                      <span>0.5</span>
+                      <span>1.0</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* CDF - Cumulative Distribution of Median Scores */}
+              {Object.keys(scoreHistory).length > 0 && (
+                <div style={{
+                  background: "rgba(0, 0, 0, 0.3)",
+                  borderRadius: "8px",
+                  padding: "12px",
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                    <div style={{ fontSize: "10px", color: "#2ad1ff", textTransform: "uppercase", letterSpacing: "1px" }}>
+                      CDF (Cumulative Distribution)
+                    </div>
+                    <div style={{ fontSize: "9px", color: "var(--muted)" }}>
+                      {Object.keys(scoreHistory).length} labels
+                    </div>
+                  </div>
+                  <div style={{ position: "relative", height: "80px", background: "rgba(0, 0, 0, 0.3)", borderRadius: "4px", padding: "8px" }}>
+                    {(() => {
+                      const medians = Object.entries(scoreHistory).map(([label, scores]) => {
+                        const sorted = [...scores].sort((a, b) => a - b);
+                        const median = sorted[Math.floor(sorted.length / 2)] || 0;
+                        return { label, median };
+                      }).sort((a, b) => a.median - b.median);
+
+                      const getPointColor = (median: number) => {
+                        if (median < 0.33) return "#ff6b6b";
+                        if (median < 0.66) return "#fbbf24";
+                        return "#5ce3a2";
                       };
 
-                      return Object.entries(scoreHistory)
-                        .map(([label, scores]) => ({
-                          label,
-                          p25: getPercentile(scores, 25),
-                          p50: getPercentile(scores, 50),
-                          p75: getPercentile(scores, 75),
-                          p90: getPercentile(scores, 90),
-                          avg: scores.reduce((a, b) => a + b, 0) / scores.length,
-                        }))
-                        .sort((a, b) => b.avg - a.avg)
-                        .slice(0, 6)
-                        .map(({ label, p25, p50, p75, p90 }) => (
-                          <div key={label} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "9px" }}>
-                            <div style={{ width: "90px", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={label}>
-                              {label.length > 12 ? `${label.slice(0, 12)}...` : label}
-                            </div>
-                            <div style={{ display: "flex", gap: "4px" }}>
-                              <span style={{ padding: "2px 6px", background: "rgba(255, 122, 61, 0.2)", borderRadius: "3px", color: "#ff7a3d" }}>{(p25 * 100).toFixed(0)}</span>
-                              <span style={{ padding: "2px 6px", background: "rgba(42, 209, 255, 0.2)", borderRadius: "3px", color: "#2ad1ff" }}>{(p50 * 100).toFixed(0)}</span>
-                              <span style={{ padding: "2px 6px", background: "rgba(92, 227, 162, 0.2)", borderRadius: "3px", color: "#5ce3a2" }}>{(p75 * 100).toFixed(0)}</span>
-                              <span style={{ padding: "2px 6px", background: "rgba(167, 139, 250, 0.2)", borderRadius: "3px", color: "#a78bfa" }}>{(p90 * 100).toFixed(0)}</span>
-                            </div>
+                      const cdfPoints = medians.map((m, i) => ({
+                        x: m.median * 100,
+                        y: 100 - ((i + 1) / medians.length) * 90,
+                        label: m.label,
+                        median: m.median,
+                      }));
+
+                      const linePath = cdfPoints.length > 0
+                        ? `M 0,100 L ${cdfPoints.map(p => `${p.x},${p.y}`).join(" L ")} L 100,${cdfPoints[cdfPoints.length - 1]?.y || 10}`
+                        : "";
+
+                      return (
+                        <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+                          <line x1="0" y1="50" x2="100" y2="50" stroke="rgba(255,255,255,0.1)" strokeWidth="0.3" />
+                          <path d={`${linePath} L 100,100 L 0,100 Z`} fill="rgba(42, 209, 255, 0.15)" />
+                          <path d={linePath} fill="none" stroke="#2ad1ff" strokeWidth="1.5" strokeLinecap="round" />
+                          {cdfPoints.map((p, i) => (
+                            <circle key={i} cx={p.x} cy={p.y} r="2" fill={getPointColor(p.median)} stroke="rgba(0,0,0,0.5)" strokeWidth="0.3">
+                              <title>{`${p.label}: ${(p.median * 100).toFixed(1)}%`}</title>
+                            </circle>
+                          ))}
+                        </svg>
+                      );
+                    })()}
+                    <div style={{ position: "absolute", top: "2px", left: "4px", fontSize: "7px", color: "var(--muted)" }}>100%</div>
+                    <div style={{ position: "absolute", bottom: "2px", left: "4px", fontSize: "7px", color: "var(--muted)" }}>0%</div>
+                    <div style={{ position: "absolute", bottom: "-2px", left: "8px", right: "8px", display: "flex", justifyContent: "space-between", fontSize: "7px", color: "var(--muted)" }}>
+                      <span>0</span>
+                      <span>0.5</span>
+                      <span>1.0</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Histogram - All Scores Distribution */}
+              {Object.keys(scoreHistory).length > 0 && (
+                <div style={{
+                  background: "rgba(0, 0, 0, 0.3)",
+                  borderRadius: "8px",
+                  padding: "12px",
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                    <div style={{ fontSize: "10px", color: "#5ce3a2", textTransform: "uppercase", letterSpacing: "1px" }}>
+                      Score Histogram (All Scores)
+                    </div>
+                    <div style={{ fontSize: "9px", color: "var(--muted)" }}>
+                      n={Object.values(scoreHistory).flat().length}
+                    </div>
+                  </div>
+                  <div style={{ position: "relative", height: "80px", background: "rgba(0, 0, 0, 0.3)", borderRadius: "4px", padding: "8px" }}>
+                    {(() => {
+                      const allScores = Object.values(scoreHistory).flat();
+                      const numBins = 25;
+                      const bins: number[] = new Array(numBins).fill(0);
+                      allScores.forEach((score) => {
+                        const binIdx = Math.min(Math.floor(score * numBins), numBins - 1);
+                        bins[binIdx]++;
+                      });
+
+                      const maxBin = Math.max(...bins, 1);
+
+                      return (
+                        <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+                          <line x1="0" y1="50" x2="100" y2="50" stroke="rgba(255,255,255,0.1)" strokeWidth="0.3" />
+                          {bins.map((count, i) => {
+                            const x = (i / numBins) * 100;
+                            const width = 100 / numBins - 0.3;
+                            const height = (count / maxBin) * 90;
+                            const intensity = i / numBins;
+                            const color = intensity < 0.33 ? "rgba(255, 107, 107, 0.7)" : intensity < 0.66 ? "rgba(251, 191, 36, 0.7)" : "rgba(92, 227, 162, 0.7)";
+                            return (
+                              <rect
+                                key={i}
+                                x={x}
+                                y={100 - height}
+                                width={width}
+                                height={height}
+                                fill={color}
+                                stroke="rgba(255,255,255,0.3)"
+                                strokeWidth="0.3"
+                              />
+                            );
+                          })}
+                        </svg>
+                      );
+                    })()}
+                    <div style={{ position: "absolute", bottom: "-2px", left: "8px", right: "8px", display: "flex", justifyContent: "space-between", fontSize: "7px", color: "var(--muted)" }}>
+                      <span>0</span>
+                      <span>0.5</span>
+                      <span>1.0</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Label Gauges - Peak & Median (ALL labels, sorted by median) */}
+              {Object.keys(scoreHistory).length > 0 && (
+                <div style={{
+                  background: "rgba(0, 0, 0, 0.3)",
+                  borderRadius: "8px",
+                  padding: "12px",
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                    <div style={{ fontSize: "10px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "1px" }}>
+                      All Labels (Peak / Median)
+                    </div>
+                    <div style={{ fontSize: "9px", color: "var(--muted)" }}>
+                      {Object.keys(scoreHistory).length} labels
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "200px", overflowY: "auto" }}>
+                    {(() => {
+                      const stats = Object.entries(scoreHistory).map(([label, scores]) => {
+                        const peak = Math.max(...scores);
+                        const sorted = [...scores].sort((a, b) => a - b);
+                        const median = sorted[Math.floor(sorted.length / 2)] || 0;
+                        return { label, peak, median, count: scores.length };
+                      }).sort((a, b) => b.median - a.median);
+
+                      return stats.map(({ label, peak, median, count }) => (
+                        <div key={label} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <div style={{ width: "90px", fontSize: "9px", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={label}>
+                            {label.length > 12 ? `${label.slice(0, 12)}...` : label}
                           </div>
-                        ));
+                          <div style={{ flex: 1, height: "10px", background: "rgba(0, 0, 0, 0.4)", borderRadius: "5px", overflow: "hidden", position: "relative" }}>
+                            <div style={{
+                              width: `${Math.max(0, Math.min(100, peak * 100))}%`,
+                              height: "100%",
+                              background: `linear-gradient(90deg, ${median < 0.33 ? "#ff6b6b" : median < 0.66 ? "#fbbf24" : "#5ce3a2"}, ${peak < 0.33 ? "#ff6b6b" : peak < 0.66 ? "#fbbf24" : "#5ce3a2"})`,
+                              borderRadius: "5px",
+                              opacity: 0.7,
+                            }} />
+                            <div style={{
+                              position: "absolute",
+                              left: `${Math.max(0, Math.min(97, median * 100))}%`,
+                              top: 0,
+                              bottom: 0,
+                              width: "2px",
+                              background: "#fff",
+                              boxShadow: "0 0 4px rgba(0,0,0,0.5)",
+                            }} />
+                          </div>
+                          <div style={{ width: "70px", fontSize: "8px", color: "var(--muted)", textAlign: "right", fontFamily: "monospace" }}>
+                            {peak.toFixed(2)} / {median.toFixed(2)}
+                          </div>
+                          <div style={{ width: "30px", fontSize: "7px", color: "var(--muted)", textAlign: "right" }}>
+                            ({count})
+                          </div>
+                        </div>
+                      ));
                     })()}
                   </div>
                 </div>
