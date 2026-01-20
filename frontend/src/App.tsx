@@ -1399,56 +1399,26 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                     height={200}
                   />
                 </div>
-                <div className="spectrogram-label-spacer" />
-              </div>
-
-              {/* Quick Action Buttons - below spectrogram */}
-              <div className="quick-actions" style={{
-                display: "flex",
-                gap: "8px",
-                padding: "8px 12px",
-                marginBottom: "8px",
-              }}>
-                <button
-                  type="button"
-                  onClick={() => setShowLabelsModal(!showLabelsModal)}
-                  className="quick-action-btn"
-                  style={{
-                    background: showLabelsModal ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.4)",
-                    border: "1px solid rgba(255, 255, 255, 0.1)",
-                    borderRadius: "4px",
-                    padding: "6px 12px",
-                    fontSize: "11px",
-                    color: showLabelsModal ? "var(--text)" : "var(--muted)",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                    transition: "all 0.2s ease",
-                  }}
-                  title={showLabelsModal ? "Hide Labels panel" : "Show Labels panel"}
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
-                    <line x1="7" y1="7" x2="7.01" y2="7" />
-                  </svg>
-                  Labels
-                </button>
-
-                {inputMode === "youtube" && youtubeVideo && (
+                {/* Quick Action Buttons - in the spacer area on the right */}
+                <div className="spectrogram-label-spacer" style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-start",
+                  justifyContent: "flex-start",
+                  gap: "8px",
+                  padding: "8px 12px",
+                }}>
                   <button
                     type="button"
-                    onClick={() => setShowVideoModal(!showVideoModal)}
+                    onClick={() => setShowLabelsModal(!showLabelsModal)}
                     className="quick-action-btn"
                     style={{
-                      background: showVideoModal ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.4)",
+                      background: showLabelsModal ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.4)",
                       border: "1px solid rgba(255, 255, 255, 0.1)",
                       borderRadius: "4px",
                       padding: "6px 12px",
                       fontSize: "11px",
-                      color: showVideoModal ? "var(--text)" : "var(--muted)",
+                      color: showLabelsModal ? "var(--text)" : "var(--muted)",
                       cursor: "pointer",
                       display: "flex",
                       alignItems: "center",
@@ -1456,24 +1426,56 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                       textTransform: "uppercase",
                       letterSpacing: "0.5px",
                       transition: "all 0.2s ease",
+                      width: "100%",
                     }}
-                    title={showVideoModal ? "Hide Video" : "Show Video"}
+                    title={showLabelsModal ? "Hide Labels panel" : "Show Labels panel"}
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      {showVideoModal ? (
-                        <>
-                          <path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z" />
-                        </>
-                      ) : (
-                        <>
-                          <path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z" />
-                          <line x1="1" y1="1" x2="23" y2="23" />
-                        </>
-                      )}
+                      <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                      <line x1="7" y1="7" x2="7.01" y2="7" />
                     </svg>
-                    Video
+                    Labels
                   </button>
-                )}
+
+                  {inputMode === "youtube" && youtubeVideo && (
+                    <button
+                      type="button"
+                      onClick={() => setShowVideoModal(!showVideoModal)}
+                      className="quick-action-btn"
+                      style={{
+                        background: showVideoModal ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.4)",
+                        border: "1px solid rgba(255, 255, 255, 0.1)",
+                        borderRadius: "4px",
+                        padding: "6px 12px",
+                        fontSize: "11px",
+                        color: showVideoModal ? "var(--text)" : "var(--muted)",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.5px",
+                        transition: "all 0.2s ease",
+                        width: "100%",
+                      }}
+                      title={showVideoModal ? "Hide Video" : "Show Video"}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        {showVideoModal ? (
+                          <>
+                            <path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z" />
+                          </>
+                        ) : (
+                          <>
+                            <path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z" />
+                            <line x1="1" y1="1" x2="23" y2="23" />
+                          </>
+                        )}
+                      </svg>
+                      Video
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Heatmap with Dynamic Labels */}
@@ -1507,7 +1509,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
         </main>
 
         {/* Floating Video Modal - draggable and resizable */}
-        {inputMode === "youtube" && youtubeVideo && showVideoModal && (
+        {inputMode === "youtube" && youtubeVideo && (
           <div
             className="floating-video-modal"
             style={{
@@ -1518,6 +1520,9 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               height: videoModalSize.height,
               zIndex: 500,
               background: "rgba(0, 0, 0, 0.65)",
+              visibility: showVideoModal ? "visible" : "hidden",
+              opacity: showVideoModal ? 1 : 0,
+              transition: "opacity 0.2s ease, visibility 0.2s ease",
               borderRadius: "8px",
               border: "1px solid rgba(255, 255, 255, 0.1)",
               boxShadow: "0 8px 32px rgba(0, 0, 0, 0.5)",
