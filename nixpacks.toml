@@ -1,7 +1,8 @@
 # Nixpacks configuration for Railway deployment
 
+# Provider detection
 [phases.setup]
-nixPkgs = ["ffmpeg", "nodejs_20"]
+nixPkgs = ["python312", "python312Packages.pip", "ffmpeg", "nodejs_20"]
 
 [phases.install]
 cmds = [
@@ -17,4 +18,4 @@ cmds = [
 ]
 
 [start]
-cmd = "cd backend && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"
+cmd = "cd backend && python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"
