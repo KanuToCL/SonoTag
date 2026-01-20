@@ -591,6 +591,8 @@ const [layoutMode, setLayoutMode] = useState<"immersive" | "classic">("immersive
   const [topRankedHistory, setTopRankedHistory] = useState<string[]>([]); // Which label was #1 at each inference (chronological)
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
   const [totalInferences, setTotalInferences] = useState<number>(0);
+  const [tableSortBy, setTableSortBy] = useState<"median" | "peak">("median"); // Sort order for label gauges table
+  const [hoveredCdfLabel, setHoveredCdfLabel] = useState<string | null>(null); // Hovered point in CDF chart
 
 // YouTube Analysis state
   const [youtubeUrl, setYoutubeUrl] = useState<string>("");
@@ -2661,7 +2663,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                       CDF (Cumulative Distribution)
                     </div>
                     <div style={{ fontSize: "9px", color: "var(--muted)" }}>
-                      {Object.keys(scoreHistory).length} labels
+                      {hoveredCdfLabel ? hoveredCdfLabel : `${Object.keys(scoreHistory).length} labels`}
                     </div>
                   </div>
                   <div style={{ position: "relative", height: "80px", background: "rgba(0, 0, 0, 0.3)", borderRadius: "4px", padding: "8px" }}>
@@ -2690,16 +2692,56 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                         : "";
 
                       return (
-                        <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+                        <svg
+                          width="100%"
+                          height="100%"
+                          viewBox="0 0 100 100"
+                          preserveAspectRatio="none"
+                          onMouseLeave={() => setHoveredCdfLabel(null)}
+                          style={{ cursor: "crosshair" }}
+                        >
                           <line x1="0" y1="50" x2="100" y2="50" stroke="rgba(255,255,255,0.1)" strokeWidth="0.3" />
                           <path d={`${linePath} L 100,100 L 0,100 Z`} fill="rgba(42, 209, 255, 0.15)" />
                           <path d={linePath} fill="none" stroke="#2ad1ff" strokeWidth="1.5" strokeLinecap="round" />
                           {cdfPoints.map((p, i) => (
-                            <circle key={i} cx={p.x} cy={p.y} r="2" fill={getPointColor(p.median)} stroke="rgba(0,0,0,0.5)" strokeWidth="0.3">
+                            <circle
+                              key={i}
+                              cx={p.x}
+                              cy={p.y}
+                              r={hoveredCdfLabel === p.label ? "4" : "2"}
+                              fill={getPointColor(p.median)}
+                              stroke={hoveredCdfLabel === p.label ? "#fff" : "rgba(0,0,0,0.5)"}
+                              strokeWidth={hoveredCdfLabel === p.label ? "1" : "0.3"}
+                              style={{ cursor: "pointer", transition: "r 0.1s, stroke-width 0.1s" }}
+                              onMouseEnter={() => setHoveredCdfLabel(p.label)}
+                            >
                               <title>{`${p.label}: ${(p.median * 100).toFixed(1)}%`}</title>
                             </circle>
                           ))}
                         </svg>
+                      );
+                    })()}
+                    {/* Hover tooltip */}
+                    {hoveredCdfLabel && (() => {
+                      const scores = scoreHistory[hoveredCdfLabel] || [];
+                      const sorted = [...scores].sort((a, b) => a - b);
+                      const median = sorted[Math.floor(sorted.length / 2)] || 0;
+                      return (
+                        <div style={{
+                          position: "absolute",
+                          top: "4px",
+                          right: "4px",
+                          background: "rgba(0, 0, 0, 0.8)",
+                          padding: "4px 8px",
+                          borderRadius: "4px",
+                          fontSize: "9px",
+                          color: "#fff",
+                          pointerEvents: "none",
+                        }}>
+                          <strong>{hoveredCdfLabel.length > 20 ? `${hoveredCdfLabel.slice(0, 20)}...` : hoveredCdfLabel}</strong>
+                          <br />
+                          Median: {(median * 100).toFixed(1)}%
+                        </div>
                       );
                     })()}
                     <div style={{ position: "absolute", top: "2px", left: "4px", fontSize: "7px", color: "var(--muted)" }}>100%</div>
@@ -2774,7 +2816,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                 </div>
               )}
 
-              {/* Label Gauges - Peak & Median (ALL labels, sorted by median) */}
+              {/* Label Gauges - Peak & Median (ALL labels, with sort toggle) */}
               {Object.keys(scoreHistory).length > 0 && (
                 <div style={{
                   background: "rgba(0, 0, 0, 0.3)",
@@ -2785,8 +2827,42 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                     <div style={{ fontSize: "10px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "1px" }}>
                       All Labels (Peak / Median)
                     </div>
-                    <div style={{ fontSize: "9px", color: "var(--muted)" }}>
-                      {Object.keys(scoreHistory).length} labels
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <div style={{ display: "flex", gap: "2px", fontSize: "8px" }}>
+                        <button
+                          type="button"
+                          onClick={() => setTableSortBy("median")}
+                          style={{
+                            padding: "2px 6px",
+                            background: tableSortBy === "median" ? "var(--accent)" : "rgba(255, 255, 255, 0.1)",
+                            color: tableSortBy === "median" ? "#fff" : "var(--muted)",
+                            border: "none",
+                            borderRadius: "3px 0 0 3px",
+                            cursor: "pointer",
+                            fontSize: "8px",
+                          }}
+                        >
+                          Median
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTableSortBy("peak")}
+                          style={{
+                            padding: "2px 6px",
+                            background: tableSortBy === "peak" ? "var(--accent)" : "rgba(255, 255, 255, 0.1)",
+                            color: tableSortBy === "peak" ? "#fff" : "var(--muted)",
+                            border: "none",
+                            borderRadius: "0 3px 3px 0",
+                            cursor: "pointer",
+                            fontSize: "8px",
+                          }}
+                        >
+                          Peak
+                        </button>
+                      </div>
+                      <div style={{ fontSize: "9px", color: "var(--muted)" }}>
+                        {Object.keys(scoreHistory).length}
+                      </div>
                     </div>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "200px", overflowY: "auto" }}>
@@ -2796,7 +2872,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                         const sorted = [...scores].sort((a, b) => a - b);
                         const median = sorted[Math.floor(sorted.length / 2)] || 0;
                         return { label, peak, median, count: scores.length };
-                      }).sort((a, b) => b.median - a.median);
+                      }).sort((a, b) => tableSortBy === "median" ? b.median - a.median : b.peak - a.peak);
 
                       return stats.map(({ label, peak, median, count }) => (
                         <div key={label} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
