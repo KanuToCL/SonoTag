@@ -2077,6 +2077,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               }}
               onPlay={() => {
                 if (!videoRef.current) return;
+                youtubeAnalyzingRef.current = true;
                 if (!videoAudioContextRef.current) {
                   const audioContext = new AudioContext();
                   const source = audioContext.createMediaElementSource(videoRef.current);
@@ -2109,10 +2110,12 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                 setYoutubeAnalyzing(true);
               }}
               onPause={() => {
+                youtubeAnalyzingRef.current = false;
                 setYoutubeAnalyzing(false);
                 videoAudioBufferRef.current = [];
               }}
               onEnded={() => {
+                youtubeAnalyzingRef.current = false;
                 setYoutubeAnalyzing(false);
                 videoAudioBufferRef.current = [];
               }}
@@ -4400,6 +4403,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                     }}
                     onPlay={() => {
                       if (!videoRef.current) return;
+                      youtubeAnalyzingRef.current = true;
 
                       // Create audio context and connect to video
                       if (!videoAudioContextRef.current) {
@@ -4451,14 +4455,14 @@ scriptProcessor.onaudioprocess = (event) => {
                       }
                       setYoutubeAnalyzing(true);
                     }}
-onPause={() => {
+                    onPause={() => {
+                      youtubeAnalyzingRef.current = false;
                       setYoutubeAnalyzing(false);
-                      // Clear any pending audio buffer to prevent stale classification
                       videoAudioBufferRef.current = [];
                     }}
                     onEnded={() => {
+                      youtubeAnalyzingRef.current = false;
                       setYoutubeAnalyzing(false);
-                      // Clear any pending audio buffer
                       videoAudioBufferRef.current = [];
                     }}
                   />
