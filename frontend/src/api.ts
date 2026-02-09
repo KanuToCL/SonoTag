@@ -7,11 +7,7 @@ import type {
   PrepareVideoResponse,
 } from "./types";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ||
-  (typeof window !== 'undefined' && window.location.hostname !== 'localhost'
-    ? '' // Same origin in production (Railway all-in-one)
-    : 'http://localhost:8000');
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 /**
  * Check if the FLAM model is loaded and ready

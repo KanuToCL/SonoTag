@@ -1170,6 +1170,19 @@ async def prepare_youtube_video(request: PrepareVideoRequest) -> PrepareVideoRes
     Downloads the video using yt-dlp and stores it for streaming.
     Returns a local URL that can be used in a <video> element.
     """
+    # Validate URL
+    url = (request.url or "").strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="No URL provided")
+
+    if not re.match(
+        r"^https?://(www\.)?(youtube\.com|youtu\.be|m\.youtube\.com)/", url
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid YouTube URL. Please provide a valid youtube.com or youtu.be link.",
+        )
+
     try:
         import yt_dlp
     except ImportError:
@@ -1198,7 +1211,8 @@ async def prepare_youtube_video(request: PrepareVideoRequest) -> PrepareVideoRes
 
     # Download video with audio using yt-dlp
     ydl_opts = {
-        "format": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]/best",  # Prefer mp4 for browser compatibility
+        "format": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]/best",
+        "merge_output_format": "mp4",
         "outtmpl": os.path.join(video_dir, "video.%(ext)s"),
         "quiet": True,
         "no_warnings": True,
@@ -1210,9 +1224,10 @@ async def prepare_youtube_video(request: PrepareVideoRequest) -> PrepareVideoRes
             video_title = info.get("title", "Unknown")
             video_duration = info.get("duration", 0) or 0
     except Exception as e:
+        logger.error(f"yt-dlp failed for URL '{request.url}': {e}")
         raise HTTPException(
             status_code=400,
-            detail=f"Failed to download YouTube video: {e}",
+            detail=f"Failed to download YouTube video. This may be due to an outdated yt-dlp version or the video being unavailable. Error: {e}",
         )
 
     # Find the downloaded video file
@@ -1338,16 +1353,21 @@ if os.path.exists(static_dir):
         This must be defined after all API routes.
         """
         # Skip API routes
-        if path.startswith("api/") or path in [
-            "health",
-            "system-info",
-            "recommend-buffer",
-            "classify",
-            "classify-local",
-            "analyze-youtube",
-            "prepare-youtube-video",
-            "cleanup-video",
-        ] or path.startswith("stream-video/"):
+        if (
+            path.startswith("api/")
+            or path
+            in [
+                "health",
+                "system-info",
+                "recommend-buffer",
+                "classify",
+                "classify-local",
+                "analyze-youtube",
+                "prepare-youtube-video",
+                "cleanup-video",
+            ]
+            or path.startswith("stream-video/")
+        ):
             raise HTTPException(status_code=404, detail="Not found")
 
         # Try to serve the exact file

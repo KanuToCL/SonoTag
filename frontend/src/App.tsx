@@ -37,8 +37,7 @@ type InputMode = "microphone" | "youtube";
 // Constants
 // =============================================================================
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 // Buffer size for audio capture (in seconds) - now configurable
 const DEFAULT_BUFFER_SECONDS = 5;
@@ -530,6 +529,7 @@ function App() {
   const [classificationScores, setClassificationScores] = useState<Record<string, number>>({});
   const [frameScores, setFrameScores] = useState<Record<string, number[]>>({}); // Frame-wise scores from local similarity
   const [isClassifying, setIsClassifying] = useState<boolean>(false);
+  const isClassifyingRef = useRef<boolean>(false);
   const [classifyError, setClassifyError] = useState<string>("");
   const [bufferSeconds, setBufferSeconds] = useState<number>(DEFAULT_BUFFER_SECONDS);
   const [normalizeScores, setNormalizeScores] = useState<boolean>(false); // Use clamping by default (matches paper)
@@ -957,7 +957,7 @@ useEffect(() => {
   // ---------------------------------------------------------------------------
 const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise<void> => {
     // Don't classify if video is paused/stopped or buffer is empty
-    if (isClassifying || videoAudioBufferRef.current.length === 0 || !youtubeAnalyzingRef.current) {
+    if (isClassifyingRef.current || videoAudioBufferRef.current.length === 0 || !youtubeAnalyzingRef.current) {
       // Clear buffer if not analyzing to prevent stale data
       if (!youtubeAnalyzingRef.current) {
         videoAudioBufferRef.current = [];
@@ -965,6 +965,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
       return;
     }
 
+    isClassifyingRef.current = true;
     setIsClassifying(true);
     const startTime = performance.now();
 
@@ -1030,12 +1031,13 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
       console.error("Video classification failed:", err);
       setClassifyError(err instanceof Error ? err.message : "Classification failed");
     } finally {
+      isClassifyingRef.current = false;
       setIsClassifying(false);
     }
-  }, [isClassifying]);
+  }, []);
 
   const classifyCurrentBuffer = useCallback(async (): Promise<void> => {
-    if (isClassifying || audioBufferRef.current.length === 0) {
+    if (isClassifyingRef.current || audioBufferRef.current.length === 0) {
       return;
     }
 
@@ -1045,6 +1047,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
       return;
     }
 
+    isClassifyingRef.current = true;
     setIsClassifying(true);
     lastClassifyTimeRef.current = now;
     const startTime = performance.now();
@@ -1115,9 +1118,10 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
       console.error("Classification failed:", err);
       setClassifyError(err instanceof Error ? err.message : "Classification failed");
     } finally {
+      isClassifyingRef.current = false;
       setIsClassifying(false);
     }
-  }, [isClassifying]); // Removed prompts from deps - we use ref instead
+  }, []); // Uses refs for all mutable state - no deps needed
 
   // ---------------------------------------------------------------------------
   // Audio Monitoring
