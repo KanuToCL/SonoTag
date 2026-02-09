@@ -40,7 +40,7 @@ type InputMode = "microphone" | "youtube";
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 // Set to true to enable verbose YouTube pipeline logging in the browser console
-const DEBUG_YT = false;
+const DEBUG_YT = true;
 
 // Buffer size for audio capture
 const DEFAULT_BUFFER_SECONDS = 5;
