@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -492,9 +493,6 @@ def recommend_buffer(payload: RecommendRequest) -> RecommendResponse:
 # =============================================================================
 # Inference Endpoints
 # =============================================================================
-
-
-import time
 
 
 class ClassifyResponse(BaseModel):
@@ -1009,16 +1007,44 @@ async def analyze_youtube(request: YouTubeAnalysisRequest) -> YouTubeAnalysisRes
         video_title = "Unknown"
         video_duration = 0.0
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        # Try download with multiple player_client strategies
+        player_client_strategies = [
+            ["ios", "web"],
+            ["android", "web"],
+            ["tv", "web"],
+        ]
+        last_error = None
+        for strategy in player_client_strategies:
             try:
-                info = ydl.extract_info(request.url, download=True)
-                video_title = info.get("title", "Unknown")
-                video_duration = info.get("duration", 0) or 0
+                ydl_opts["extractor_args"] = {"youtube": {"player_client": strategy}}
+                logger.info(f"[analyze-youtube] Trying player_client={strategy}")
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(request.url, download=True)
+                    video_title = info.get("title", "Unknown")
+                    video_duration = info.get("duration", 0) or 0
+                last_error = None
+                break
             except Exception as e:
+                last_error = e
+                logger.warning(f"[analyze-youtube] Strategy {strategy} failed: {e}")
+                for f in os.listdir(temp_dir):
+                    fpath = os.path.join(temp_dir, f)
+                    if os.path.isfile(fpath):
+                        os.remove(fpath)
+                continue
+
+        if last_error is not None:
+            logger.error(f"yt-dlp failed all strategies for URL '{request.url}': {last_error}")
+            error_str = str(last_error).lower()
+            if "sign in" in error_str or "bot" in error_str or "confirm" in error_str:
                 raise HTTPException(
-                    status_code=400,
-                    detail=f"Failed to download YouTube audio: {e}",
+                    status_code=502,
+                    detail="YouTube is blocking this request (bot detection). Try again later or use a different video.",
                 )
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to download YouTube audio: {last_error}",
+            )
 
         t_download_end = time.perf_counter()
         timing["download_ms"] = round((t_download_end - t_download_start) * 1000, 2)
@@ -1220,23 +1246,46 @@ async def prepare_youtube_video(request: PrepareVideoRequest) -> PrepareVideoRes
         "outtmpl": os.path.join(video_dir, "video.%(ext)s"),
         "quiet": True,
         "no_warnings": True,
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["ios", "web"],
-            }
-        },
     }
 
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(request.url, download=True)
-            video_title = info.get("title", "Unknown")
-            video_duration = info.get("duration", 0) or 0
-    except Exception as e:
-        logger.error(f"yt-dlp failed for URL '{request.url}': {e}")
+    # Try download with multiple player_client strategies
+    player_client_strategies = [
+        ["ios", "web"],
+        ["android", "web"],
+        ["tv", "web"],
+    ]
+    last_error = None
+    for strategy in player_client_strategies:
+        try:
+            ydl_opts["extractor_args"] = {"youtube": {"player_client": strategy}}
+            logger.info(f"[prepare-youtube-video] Trying player_client={strategy}")
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(request.url, download=True)
+                video_title = info.get("title", "Unknown")
+                video_duration = info.get("duration", 0) or 0
+            last_error = None
+            break
+        except Exception as e:
+            last_error = e
+            logger.warning(f"[prepare-youtube-video] Strategy {strategy} failed: {e}")
+            # Clean up any partial downloads before retry
+            for f in os.listdir(video_dir):
+                fpath = os.path.join(video_dir, f)
+                if os.path.isfile(fpath):
+                    os.remove(fpath)
+            continue
+
+    if last_error is not None:
+        logger.error(f"yt-dlp failed all strategies for URL '{request.url}': {last_error}")
+        error_str = str(last_error).lower()
+        if "sign in" in error_str or "bot" in error_str or "confirm" in error_str:
+            raise HTTPException(
+                status_code=502,
+                detail="YouTube is blocking this request (bot detection). The video cannot be downloaded from this server at the moment. Try again later or use a different video.",
+            )
         raise HTTPException(
-            status_code=400,
-            detail=f"Failed to download YouTube video. This may be due to an outdated yt-dlp version or the video being unavailable. Error: {e}",
+            status_code=502,
+            detail=f"Failed to download YouTube video. This may be due to the video being unavailable or region-locked. Error: {last_error}",
         )
 
     # Find the downloaded video file
@@ -1374,6 +1423,8 @@ if os.path.exists(static_dir):
             or path
             in [
                 "health",
+                "model-status",
+                "prompts",
                 "system-info",
                 "recommend-buffer",
                 "classify",
@@ -1383,6 +1434,7 @@ if os.path.exists(static_dir):
                 "cleanup-video",
             ]
             or path.startswith("stream-video/")
+            or path.startswith("cleanup-video/")
         ):
             raise HTTPException(status_code=404, detail="Not found")
 

@@ -1980,6 +1980,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                       if (youtubeVideo) {
                         cleanupVideo(youtubeVideo.video_id).catch(() => {});
                       }
+                      setYoutubeVideo(null);
                       // Load new video
                       setYoutubePreparing(true);
                       setYoutubeError("");
@@ -2035,6 +2036,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                     if (youtubeVideo) {
                       cleanupVideo(youtubeVideo.video_id).catch(() => {});
                     }
+                    setYoutubeVideo(null);
                     // Load new video
                     setYoutubePreparing(true);
                     setYoutubeError("");
@@ -3603,6 +3605,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                     }
                     videoAudioBufferRef.current = [];
                     setYoutubeAnalyzing(false);
+                    setYoutubeVideo(null);
                     setYoutubePreparing(true);
                     setYoutubeError("");
                     try {

@@ -26,8 +26,9 @@ WORKDIR /app/backend
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir -e /app/openflam
 
-# Update yt-dlp to latest (YouTube frequently changes their API)
-RUN pip install --no-cache-dir --upgrade yt-dlp
+# Update yt-dlp to latest nightly (YouTube frequently changes their API,
+# nightly builds have the most recent bypass fixes for bot detection)
+RUN pip install --no-cache-dir --upgrade "yt-dlp[default]"
 
 # Set environment variables
 ENV PYTHONPATH=/app/openflam/src
