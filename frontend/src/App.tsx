@@ -996,6 +996,9 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
 
       // Update scores and timing
       const elapsedMs = performance.now() - startTime;
+      // Update refs immediately so draw loop sees new scores without waiting for React re-render
+      classificationScoresRef.current = result.global_scores;
+      frameScoresRef.current = result.frame_scores;
       setClassificationScores(result.global_scores);
       setFrameScores(result.frame_scores);
       // Track cumulative statistics
@@ -1081,6 +1084,9 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
       // Update scores and timing
       const elapsedMs = performance.now() - startTime;
       // Use global_scores for the numerical display and heatmap strip
+      // Update refs immediately so draw loop sees new scores without waiting for React re-render
+      classificationScoresRef.current = result.global_scores;
+      frameScoresRef.current = result.frame_scores;
       setClassificationScores(result.global_scores);
       // Store frame-wise scores for potential future use (temporal heatmap)
       setFrameScores(result.frame_scores);
