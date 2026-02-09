@@ -9,16 +9,14 @@ import type {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
-console.log('[api] API_BASE_URL resolved to:', JSON.stringify(API_BASE_URL), '| VITE env:', import.meta.env.VITE_API_BASE_URL);
+// Set to true to enable verbose API logging in the browser console
+const DEBUG_API = false;
 
 /**
  * Check if the FLAM model is loaded and ready
  */
 export async function getModelStatus(): Promise<ModelStatusResponse> {
-  const url = `${API_BASE_URL}/model-status`;
-  console.log('[api] getModelStatus → GET', url);
-  const response = await fetch(url);
-  console.log('[api] getModelStatus ←', response.status, response.statusText);
+  const response = await fetch(`${API_BASE_URL}/model-status`);
   if (!response.ok) {
     throw new Error(`Failed to get model status: ${response.statusText}`);
   }
@@ -135,6 +133,7 @@ export async function classifyAudioLocal(
   customPrompts?: string[],
   method: "unbiased" | "approximate" = "unbiased"
 ): Promise<ClassifyLocalResponse> {
+  if (DEBUG_API) console.log('[api] classifyAudioLocal → blob:', audioBlob.size, 'bytes');
   const formData = new FormData();
   formData.append("audio", audioBlob, "audio.wav");
 
@@ -144,18 +143,13 @@ export async function classifyAudioLocal(
 
   formData.append("method", method);
 
-  const fetchUrl = `${API_BASE_URL}/classify-local`;
-  console.log('[api] classifyAudioLocal → POST', fetchUrl, '| blob size:', audioBlob.size, '| method:', method);
-  const response = await fetch(fetchUrl, {
+  const response = await fetch(`${API_BASE_URL}/classify-local`, {
     method: "POST",
     body: formData,
   });
 
-  console.log('[api] classifyAudioLocal ←', response.status, response.statusText);
-
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    console.error('[api] classifyAudioLocal FAILED:', error);
     throw new Error(
       error.detail || `Local classification failed: ${response.statusText}`
     );
@@ -238,9 +232,8 @@ export async function analyzeYouTube(
 export async function prepareYouTubeVideo(
   url: string
 ): Promise<PrepareVideoResponse> {
-  const fetchUrl = `${API_BASE_URL}/prepare-youtube-video`;
-  console.log('[api] prepareYouTubeVideo → POST', fetchUrl, '| youtube url:', url);
-  const response = await fetch(fetchUrl, {
+  if (DEBUG_API) console.log('[api] prepareYouTubeVideo →', url);
+  const response = await fetch(`${API_BASE_URL}/prepare-youtube-video`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -250,19 +243,15 @@ export async function prepareYouTubeVideo(
     }),
   });
 
-  console.log('[api] prepareYouTubeVideo ←', response.status, response.statusText);
-
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    console.error('[api] prepareYouTubeVideo FAILED:', error);
+    if (DEBUG_API) console.error('[api] prepareYouTubeVideo FAILED:', response.status, error);
     throw new Error(
       error.detail || `Failed to prepare video: ${response.statusText}`
     );
   }
 
-  const result = await response.json();
-  console.log('[api] prepareYouTubeVideo result:', JSON.stringify(result));
-  return result;
+  return response.json();
 }
 
 /**
@@ -270,7 +259,7 @@ export async function prepareYouTubeVideo(
  */
 export function getVideoStreamUrl(videoId: string): string {
   const url = `${API_BASE_URL}/stream-video/${videoId}`;
-  console.log('[api] getVideoStreamUrl:', url, '| videoId:', videoId);
+  if (DEBUG_API) console.log('[api] getVideoStreamUrl:', url);
   return url;
 }
 
@@ -278,10 +267,7 @@ export function getVideoStreamUrl(videoId: string): string {
  * Clean up a prepared video to free disk space.
  */
 export async function cleanupVideo(videoId: string): Promise<void> {
-  const url = `${API_BASE_URL}/cleanup-video/${videoId}`;
-  console.log('[api] cleanupVideo → DELETE', url);
-  const response = await fetch(url, {
+  await fetch(`${API_BASE_URL}/cleanup-video/${videoId}`, {
     method: "DELETE",
   });
-  console.log('[api] cleanupVideo ←', response.status, response.statusText);
 }
