@@ -956,12 +956,12 @@ useEffect(() => {
   // Classification Logic
   // ---------------------------------------------------------------------------
 const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise<void> => {
-    // Don't classify if video is paused/stopped or buffer is empty
+    console.log('[classifyVideoBuffer] called | isClassifyingRef:', isClassifyingRef.current, '| buffer chunks:', videoAudioBufferRef.current.length, '| analyzingRef:', youtubeAnalyzingRef.current);
     if (isClassifyingRef.current || videoAudioBufferRef.current.length === 0 || !youtubeAnalyzingRef.current) {
-      // Clear buffer if not analyzing to prevent stale data
       if (!youtubeAnalyzingRef.current) {
         videoAudioBufferRef.current = [];
       }
+      console.log('[classifyVideoBuffer] SKIPPED — guard condition hit');
       return;
     }
 
@@ -970,8 +970,8 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
     const startTime = performance.now();
 
     try {
-      // Concatenate all buffered samples
       const totalLength = videoAudioBufferRef.current.reduce((sum, arr) => sum + arr.length, 0);
+      console.log('[classifyVideoBuffer] Concatenating', videoAudioBufferRef.current.length, 'chunks, total samples:', totalLength, '| sampleRate:', sampleRateVideo);
       const allSamples = new Float32Array(totalLength);
       let offset = 0;
       for (const chunk of videoAudioBufferRef.current) {
@@ -994,8 +994,8 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
       const currentPrompts = promptsRef.current;
       const result = await classifyAudioLocal(wavBlob, currentPrompts, "unbiased");
 
-      // Update scores and timing
       const elapsedMs = performance.now() - startTime;
+      console.log('[classifyVideoBuffer] classifyAudioLocal SUCCESS | elapsed:', Math.round(elapsedMs), 'ms | global_scores keys:', Object.keys(result.global_scores).length, '| frame_scores keys:', Object.keys(result.frame_scores).length);
       // Update refs immediately so draw loop sees new scores without waiting for React re-render
       classificationScoresRef.current = result.global_scores;
       frameScoresRef.current = result.frame_scores;
@@ -1959,6 +1959,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                   onChange={(e) => setVideoModalSearchUrl(e.target.value)}
                   onKeyDown={async (e) => {
                     if (e.key === "Enter" && videoModalSearchUrl.trim()) {
+                      console.log('[YT:modal:keydown] Enter pressed, URL:', videoModalSearchUrl);
                       // Clean up current video audio resources
                       setYoutubeAnalyzing(false);
                       videoAudioBufferRef.current = [];
@@ -1979,18 +1980,22 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                         videoAudioContextRef.current = null;
                       }
                       if (youtubeVideo) {
+                        console.log('[YT:modal:keydown] Cleaning up previous video:', youtubeVideo.video_id);
                         cleanupVideo(youtubeVideo.video_id).catch(() => {});
                       }
                       // Load new video
                       setYoutubePreparing(true);
                       setYoutubeError("");
                       try {
+                        console.log('[YT:modal:keydown] Calling prepareYouTubeVideo...');
                         const result = await prepareYouTubeVideo(videoModalSearchUrl);
+                        console.log('[YT:modal:keydown] prepareYouTubeVideo SUCCESS:', JSON.stringify(result));
                         setYoutubeVideo(result);
                         setYoutubeUrl(videoModalSearchUrl);
                         setShowVideoModalSearch(false);
                         setVideoModalSearchUrl("");
                       } catch (err) {
+                        console.error('[YT:modal:keydown] prepareYouTubeVideo FAILED:', err);
                         setYoutubeError(err instanceof Error ? err.message : "Failed");
                       } finally {
                         setYoutubePreparing(false);
@@ -2014,6 +2019,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                   type="button"
                   onClick={async () => {
                     if (!videoModalSearchUrl.trim()) return;
+                    console.log('[YT:modal:click] Load button clicked, URL:', videoModalSearchUrl);
                     // Clean up current video audio resources
                     setYoutubeAnalyzing(false);
                     videoAudioBufferRef.current = [];
@@ -2034,18 +2040,22 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                       videoAudioContextRef.current = null;
                     }
                     if (youtubeVideo) {
+                      console.log('[YT:modal:click] Cleaning up previous video:', youtubeVideo.video_id);
                       cleanupVideo(youtubeVideo.video_id).catch(() => {});
                     }
                     // Load new video
                     setYoutubePreparing(true);
                     setYoutubeError("");
                     try {
+                      console.log('[YT:modal:click] Calling prepareYouTubeVideo...');
                       const result = await prepareYouTubeVideo(videoModalSearchUrl);
+                      console.log('[YT:modal:click] prepareYouTubeVideo SUCCESS:', JSON.stringify(result));
                       setYoutubeVideo(result);
                       setYoutubeUrl(videoModalSearchUrl);
                       setShowVideoModalSearch(false);
                       setVideoModalSearchUrl("");
                     } catch (err) {
+                      console.error('[YT:modal:click] prepareYouTubeVideo FAILED:', err);
                       setYoutubeError(err instanceof Error ? err.message : "Failed");
                     } finally {
                       setYoutubePreparing(false);
@@ -2081,11 +2091,28 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                 display: "block",
                 minHeight: 0,
               }}
+              onLoadStart={() => {
+                const src = videoRef.current?.src || 'N/A';
+                console.log('[YT:video:immersive] onLoadStart | src:', src);
+              }}
+              onLoadedData={() => {
+                const vid = videoRef.current;
+                console.log('[YT:video:immersive] onLoadedData | duration:', vid?.duration, '| readyState:', vid?.readyState, '| videoWidth:', vid?.videoWidth, '| videoHeight:', vid?.videoHeight);
+              }}
+              onWaiting={() => {
+                console.log('[YT:video:immersive] onWaiting (buffering...)');
+              }}
+              onCanPlay={() => {
+                console.log('[YT:video:immersive] onCanPlay — ready to play');
+              }}
               onPlay={() => {
+                console.log('[YT:video:immersive] onPlay fired, videoRef:', !!videoRef.current);
                 if (!videoRef.current) return;
                 youtubeAnalyzingRef.current = true;
                 if (!videoAudioContextRef.current) {
+                  console.log('[YT:video:immersive] Creating new AudioContext...');
                   const audioContext = new AudioContext();
+                  console.log('[YT:video:immersive] AudioContext state:', audioContext.state, '| sampleRate:', audioContext.sampleRate);
                   const source = audioContext.createMediaElementSource(videoRef.current);
                   const scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
                   const analyser = audioContext.createAnalyser();
@@ -2104,6 +2131,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                     currentBufferSamples += samples.length;
                     const currentMaxSamples = audioContext.sampleRate * bufferSecondsRef.current;
                     if (currentBufferSamples >= currentMaxSamples) {
+                      console.log('[YT:video:immersive] Buffer full, triggering classifyVideoBuffer. samples:', currentBufferSamples);
                       currentBufferSamples = 0;
                       classifyVideoBuffer(audioContext.sampleRate);
                     }
@@ -2112,18 +2140,35 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                   videoSourceRef.current = source;
                   videoScriptProcessorRef.current = scriptProcessor;
                   videoAnalyserRef.current = analyser;
+                  console.log('[YT:video:immersive] Audio pipeline connected');
+                } else {
+                  console.log('[YT:video:immersive] AudioContext already exists, state:', videoAudioContextRef.current.state);
                 }
                 setYoutubeAnalyzing(true);
               }}
               onPause={() => {
+                console.log('[YT:video:immersive] onPause fired');
                 youtubeAnalyzingRef.current = false;
                 setYoutubeAnalyzing(false);
                 videoAudioBufferRef.current = [];
               }}
               onEnded={() => {
+                console.log('[YT:video:immersive] onEnded fired');
                 youtubeAnalyzingRef.current = false;
                 setYoutubeAnalyzing(false);
                 videoAudioBufferRef.current = [];
+              }}
+              onError={(e) => {
+                const vid = e.currentTarget as HTMLVideoElement;
+                const err = vid.error;
+                console.error('[YT:video:immersive] onError fired!', {
+                  code: err?.code,
+                  message: err?.message,
+                  networkState: vid.networkState,
+                  readyState: vid.readyState,
+                  src: vid.src,
+                });
+                setYoutubeError(`Video playback error: ${err?.message || 'unknown'} (code ${err?.code})`);
               }}
             />
 
@@ -4345,6 +4390,8 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                     return;
                   }
 
+                  console.log('[YT:classic:click] Load Video clicked, URL:', youtubeUrl);
+
                   // Cleanup previous video audio context before loading new video
                   // This is critical because createMediaElementSource can only be called once per element
                   if (videoScriptProcessorRef.current) {
@@ -4370,9 +4417,12 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                   setYoutubeError("");
                   setYoutubeVideo(null);
                   try {
+                    console.log('[YT:classic:click] Calling prepareYouTubeVideo...');
                     const result = await prepareYouTubeVideo(youtubeUrl);
+                    console.log('[YT:classic:click] prepareYouTubeVideo SUCCESS:', JSON.stringify(result));
                     setYoutubeVideo(result);
                   } catch (err) {
+                    console.error('[YT:classic:click] prepareYouTubeVideo FAILED:', err);
                     setYoutubeError(err instanceof Error ? err.message : "Failed to prepare video");
                   } finally {
                     setYoutubePreparing(false);
@@ -4407,13 +4457,30 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                       borderRadius: "4px",
                       marginTop: "0.5rem"
                     }}
+                    onLoadStart={() => {
+                      const src = videoRef.current?.src || 'N/A';
+                      console.log('[YT:video:classic] onLoadStart | src:', src);
+                    }}
+                    onLoadedData={() => {
+                      const vid = videoRef.current;
+                      console.log('[YT:video:classic] onLoadedData | duration:', vid?.duration, '| readyState:', vid?.readyState, '| videoWidth:', vid?.videoWidth);
+                    }}
+                    onWaiting={() => {
+                      console.log('[YT:video:classic] onWaiting (buffering...)');
+                    }}
+                    onCanPlay={() => {
+                      console.log('[YT:video:classic] onCanPlay — ready to play');
+                    }}
                     onPlay={() => {
+                      console.log('[YT:video:classic] onPlay fired, videoRef:', !!videoRef.current);
                       if (!videoRef.current) return;
                       youtubeAnalyzingRef.current = true;
 
                       // Create audio context and connect to video
                       if (!videoAudioContextRef.current) {
+                        console.log('[YT:video:classic] Creating new AudioContext...');
                         const audioContext = new AudioContext();
+                        console.log('[YT:video:classic] AudioContext state:', audioContext.state, '| sampleRate:', audioContext.sampleRate);
                         const source = audioContext.createMediaElementSource(videoRef.current);
                         const scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
 
@@ -4428,15 +4495,12 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                         scriptProcessor.connect(audioContext.destination);
                         source.connect(audioContext.destination); // Also play through speakers
 
-const maxBufferSamples = audioContext.sampleRate * bufferSeconds;
-                        void maxBufferSamples; // Used in closure below via bufferSecondsRef
+                        const maxBufferSamples = audioContext.sampleRate * bufferSeconds;
+                        void maxBufferSamples;
                         let currentBufferSamples = 0;
 
-scriptProcessor.onaudioprocess = (event) => {
-                          // Only process audio if video is actually playing
-                          if (!youtubeAnalyzingRef.current) {
-                            return;
-                          }
+                        scriptProcessor.onaudioprocess = (event) => {
+                          if (!youtubeAnalyzingRef.current) return;
 
                           const inputData = event.inputBuffer.getChannelData(0);
                           const samples = new Float32Array(inputData);
@@ -4444,11 +4508,10 @@ scriptProcessor.onaudioprocess = (event) => {
                           videoAudioBufferRef.current.push(samples);
                           currentBufferSamples += samples.length;
 
-                          // Use ref to get latest buffer duration (allows dynamic changes)
                           const currentMaxSamples = audioContext.sampleRate * bufferSecondsRef.current;
 
-                          // When buffer is full, trigger classification
                           if (currentBufferSamples >= currentMaxSamples) {
+                            console.log('[YT:video:classic] Buffer full, triggering classifyVideoBuffer. samples:', currentBufferSamples);
                             currentBufferSamples = 0;
                             classifyVideoBuffer(audioContext.sampleRate);
                           }
@@ -4458,18 +4521,35 @@ scriptProcessor.onaudioprocess = (event) => {
                         videoSourceRef.current = source;
                         videoScriptProcessorRef.current = scriptProcessor;
                         videoAnalyserRef.current = analyser;
+                        console.log('[YT:video:classic] Audio pipeline connected');
+                      } else {
+                        console.log('[YT:video:classic] AudioContext already exists, state:', videoAudioContextRef.current.state);
                       }
                       setYoutubeAnalyzing(true);
                     }}
                     onPause={() => {
+                      console.log('[YT:video:classic] onPause fired');
                       youtubeAnalyzingRef.current = false;
                       setYoutubeAnalyzing(false);
                       videoAudioBufferRef.current = [];
                     }}
                     onEnded={() => {
+                      console.log('[YT:video:classic] onEnded fired');
                       youtubeAnalyzingRef.current = false;
                       setYoutubeAnalyzing(false);
                       videoAudioBufferRef.current = [];
+                    }}
+                    onError={(e) => {
+                      const vid = e.currentTarget as HTMLVideoElement;
+                      const err = vid.error;
+                      console.error('[YT:video:classic] onError fired!', {
+                        code: err?.code,
+                        message: err?.message,
+                        networkState: vid.networkState,
+                        readyState: vid.readyState,
+                        src: vid.src,
+                      });
+                      setYoutubeError(`Video playback error: ${err?.message || 'unknown'} (code ${err?.code})`);
                     }}
                   />
                   <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>

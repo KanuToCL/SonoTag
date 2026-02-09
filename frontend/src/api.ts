@@ -9,11 +9,16 @@ import type {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
+console.log('[api] API_BASE_URL resolved to:', JSON.stringify(API_BASE_URL), '| VITE env:', import.meta.env.VITE_API_BASE_URL);
+
 /**
  * Check if the FLAM model is loaded and ready
  */
 export async function getModelStatus(): Promise<ModelStatusResponse> {
-  const response = await fetch(`${API_BASE_URL}/model-status`);
+  const url = `${API_BASE_URL}/model-status`;
+  console.log('[api] getModelStatus → GET', url);
+  const response = await fetch(url);
+  console.log('[api] getModelStatus ←', response.status, response.statusText);
   if (!response.ok) {
     throw new Error(`Failed to get model status: ${response.statusText}`);
   }
@@ -133,20 +138,24 @@ export async function classifyAudioLocal(
   const formData = new FormData();
   formData.append("audio", audioBlob, "audio.wav");
 
-  // If custom prompts provided, add as semicolon-separated string
   if (customPrompts && customPrompts.length > 0) {
     formData.append("prompts", customPrompts.join("; "));
   }
 
   formData.append("method", method);
 
-  const response = await fetch(`${API_BASE_URL}/classify-local`, {
+  const fetchUrl = `${API_BASE_URL}/classify-local`;
+  console.log('[api] classifyAudioLocal → POST', fetchUrl, '| blob size:', audioBlob.size, '| method:', method);
+  const response = await fetch(fetchUrl, {
     method: "POST",
     body: formData,
   });
 
+  console.log('[api] classifyAudioLocal ←', response.status, response.statusText);
+
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
+    console.error('[api] classifyAudioLocal FAILED:', error);
     throw new Error(
       error.detail || `Local classification failed: ${response.statusText}`
     );
@@ -229,7 +238,9 @@ export async function analyzeYouTube(
 export async function prepareYouTubeVideo(
   url: string
 ): Promise<PrepareVideoResponse> {
-  const response = await fetch(`${API_BASE_URL}/prepare-youtube-video`, {
+  const fetchUrl = `${API_BASE_URL}/prepare-youtube-video`;
+  console.log('[api] prepareYouTubeVideo → POST', fetchUrl, '| youtube url:', url);
+  const response = await fetch(fetchUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -239,28 +250,38 @@ export async function prepareYouTubeVideo(
     }),
   });
 
+  console.log('[api] prepareYouTubeVideo ←', response.status, response.statusText);
+
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
+    console.error('[api] prepareYouTubeVideo FAILED:', error);
     throw new Error(
       error.detail || `Failed to prepare video: ${response.statusText}`
     );
   }
 
-  return response.json();
+  const result = await response.json();
+  console.log('[api] prepareYouTubeVideo result:', JSON.stringify(result));
+  return result;
 }
 
 /**
  * Get the streaming URL for a prepared video.
  */
 export function getVideoStreamUrl(videoId: string): string {
-  return `${API_BASE_URL}/stream-video/${videoId}`;
+  const url = `${API_BASE_URL}/stream-video/${videoId}`;
+  console.log('[api] getVideoStreamUrl:', url, '| videoId:', videoId);
+  return url;
 }
 
 /**
  * Clean up a prepared video to free disk space.
  */
 export async function cleanupVideo(videoId: string): Promise<void> {
-  await fetch(`${API_BASE_URL}/cleanup-video/${videoId}`, {
+  const url = `${API_BASE_URL}/cleanup-video/${videoId}`;
+  console.log('[api] cleanupVideo → DELETE', url);
+  const response = await fetch(url, {
     method: "DELETE",
   });
+  console.log('[api] cleanupVideo ←', response.status, response.statusText);
 }

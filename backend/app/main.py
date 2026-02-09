@@ -1170,9 +1170,11 @@ async def prepare_youtube_video(request: PrepareVideoRequest) -> PrepareVideoRes
     Downloads the video using yt-dlp and stores it for streaming.
     Returns a local URL that can be used in a <video> element.
     """
+    logger.info(f"[prepare-youtube-video] Request received, url: {request.url}")
     # Validate URL
     url = (request.url or "").strip()
     if not url:
+        logger.error("[prepare-youtube-video] No URL provided")
         raise HTTPException(status_code=400, detail="No URL provided")
 
     if not re.match(
@@ -1193,10 +1195,14 @@ async def prepare_youtube_video(request: PrepareVideoRequest) -> PrepareVideoRes
 
     # Create a hash of the URL for the video ID
     video_id = hashlib.md5(request.url.encode()).hexdigest()[:12]
+    logger.info(f"[prepare-youtube-video] video_id={video_id}")
 
     # Check if already prepared
     if video_id in _prepared_videos:
         info = _prepared_videos[video_id]
+        logger.info(
+            f"[prepare-youtube-video] Already cached, returning existing. title={info['title']}"
+        )
         return PrepareVideoResponse(
             video_id=video_id,
             title=info["title"],
@@ -1208,6 +1214,7 @@ async def prepare_youtube_video(request: PrepareVideoRequest) -> PrepareVideoRes
     # Create temp directory for this video
     video_dir = os.path.join(tempfile.gettempdir(), f"sonotag_video_{video_id}")
     os.makedirs(video_dir, exist_ok=True)
+    logger.info(f"[prepare-youtube-video] Downloading to {video_dir}")
 
     # Download video with audio using yt-dlp
     ydl_opts = {
@@ -1232,16 +1239,21 @@ async def prepare_youtube_video(request: PrepareVideoRequest) -> PrepareVideoRes
 
     # Find the downloaded video file
     video_file = None
-    for f in os.listdir(video_dir):
+    dir_contents = os.listdir(video_dir)
+    logger.info(f"[prepare-youtube-video] Directory contents: {dir_contents}")
+    for f in dir_contents:
         if f.startswith("video.") and not f.endswith(".part"):
             video_file = os.path.join(video_dir, f)
             break
 
     if not video_file:
+        logger.error(f"[prepare-youtube-video] No video file found in {video_dir}")
         raise HTTPException(
             status_code=500,
             detail="Failed to find downloaded video file",
         )
+
+    logger.info(f"[prepare-youtube-video] Found video file: {video_file}")
 
     # Store video info
     _prepared_videos[video_id] = {
@@ -1269,6 +1281,9 @@ async def stream_video(video_id: str):
 
     This endpoint serves the video file for playback in a <video> element.
     """
+    logger.info(
+        f"[stream-video] Request for video_id={video_id}, known_ids={list(_prepared_videos.keys())}"
+    )
     if video_id not in _prepared_videos:
         raise HTTPException(
             status_code=404,
@@ -1277,6 +1292,9 @@ async def stream_video(video_id: str):
 
     video_info = _prepared_videos[video_id]
     video_file = video_info["file_path"]
+    logger.info(
+        f"[stream-video] Serving file: {video_file}, exists: {os.path.exists(video_file)}"
+    )
 
     if not os.path.exists(video_file):
         raise HTTPException(
