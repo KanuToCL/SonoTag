@@ -1220,6 +1220,11 @@ async def prepare_youtube_video(request: PrepareVideoRequest) -> PrepareVideoRes
         "outtmpl": os.path.join(video_dir, "video.%(ext)s"),
         "quiet": True,
         "no_warnings": True,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["ios", "web"],
+            }
+        },
     }
 
     try:

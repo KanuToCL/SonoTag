@@ -10,7 +10,7 @@ import type {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 // Set to true to enable verbose API logging in the browser console
-const DEBUG_API = true;
+const DEBUG_API = false;
 
 /**
  * Check if the FLAM model is loaded and ready
