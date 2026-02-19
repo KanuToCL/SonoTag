@@ -171,3 +171,44 @@ export interface PrepareVideoResponse {
   video_url: string;
   ready: boolean;
 }
+
+// =============================================================================
+// Multi-Platform Types (SoundCloud, Vimeo, etc.)
+// =============================================================================
+
+export interface AnalyzeUrlChunkResult {
+  chunk_index: number;
+  start_time_s: number;
+  end_time_s: number;
+  global_scores: Record<string, number>;
+  frame_scores: Record<string, number[]>;
+}
+
+export interface AnalyzeUrlResponse {
+  platform: string;
+  title: string;
+  duration_s: number;
+  analyzed_duration_s: number;
+  num_chunks: number;
+  prompts: string[];
+  chunks: AnalyzeUrlChunkResult[];
+  aggregated_scores: Record<string, number>;
+  timing: {
+    download_ms: number;
+    load_ms: number;
+    inference_ms: number;
+    total_ms: number;
+  };
+}
+
+export interface PrepareMediaResponse {
+  video_id: string;
+  title: string;
+  duration_s: number;
+  video_url: string;
+  audio_url: string;
+  thumbnail_url: string;
+  has_video: boolean;
+  platform: string;
+  ready: boolean;
+}

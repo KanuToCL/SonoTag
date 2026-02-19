@@ -1098,8 +1098,563 @@ async def debug_youtube_test(url: str = "https://www.youtube.com/watch?v=jNQXAC9
     return test_results
 
 
+@app.get("/debug/strategy-health")
+async def debug_strategy_health():
+    """
+    Returns the current health status of YouTube player_client strategies.
+    Shows success/failure rates, current ordering, and consecutive failures.
+    """
+    return {
+        "tracker": "StrategyHealthTracker",
+        "current_order": youtube_strategy_tracker.get_ordered_strategies(),
+        "strategies": youtube_strategy_tracker.get_health_report(),
+        "config": {
+            "decay_interval_hours": StrategyHealthTracker.DECAY_INTERVAL_S / 3600,
+            "consecutive_fail_threshold": StrategyHealthTracker.CONSECUTIVE_FAIL_THRESHOLD,
+        },
+    }
+
+
 # =============================================================================
-# YouTube Analysis Endpoint
+# Unified Download Helper (multi-platform: YouTube, Vimeo, SoundCloud, etc.)
+# =============================================================================
+
+PLATFORM_PATTERNS = {
+    "youtube": [r"(youtube\.com|youtu\.be|m\.youtube\.com)"],
+    "vimeo": [r"vimeo\.com"],
+    "soundcloud": [r"soundcloud\.com"],
+}
+
+
+def detect_platform(url: str) -> str:
+    """Detect which platform a URL belongs to."""
+    for platform_name, patterns in PLATFORM_PATTERNS.items():
+        for pattern in patterns:
+            if re.search(pattern, url):
+                return platform_name
+    return "unknown"
+
+
+# =============================================================================
+# Strategy Health Tracker (Reactive Learning)
+# =============================================================================
+
+
+class StrategyHealthTracker:
+    """
+    Tracks success/failure of yt-dlp player_client strategies and dynamically
+    reorders them so the most reliable strategy is tried first.
+
+    Reactive learning: every real download attempt updates the tracker.
+    No background jobs, no persistence across restarts. Counters decay
+    every DECAY_INTERVAL_S seconds so "dead" strategies get retried.
+    """
+
+    DECAY_INTERVAL_S = 6 * 3600  # 6 hours
+    CONSECUTIVE_FAIL_THRESHOLD = 3  # deprioritize after N consecutive failures
+
+    def __init__(self, strategies: list[list[str]]):
+        self._strategies = [tuple(s) for s in strategies]
+        self._stats: dict[tuple, dict] = {}
+        self._last_decay = time.time()
+        for s in self._strategies:
+            self._stats[s] = {
+                "successes": 0,
+                "failures": 0,
+                "consecutive_failures": 0,
+                "last_success": None,
+                "last_failure": None,
+            }
+
+    def record_success(self, strategy: list[str]) -> None:
+        key = tuple(strategy)
+        if key not in self._stats:
+            return
+        self._stats[key]["successes"] += 1
+        self._stats[key]["consecutive_failures"] = 0
+        self._stats[key]["last_success"] = time.time()
+        logger.info(
+            f"[StrategyHealthTracker] {strategy} succeeded (total: {self._stats[key]['successes']})"
+        )
+
+    def record_failure(self, strategy: list[str]) -> None:
+        key = tuple(strategy)
+        if key not in self._stats:
+            return
+        self._stats[key]["failures"] += 1
+        self._stats[key]["consecutive_failures"] += 1
+        self._stats[key]["last_failure"] = time.time()
+        logger.warning(
+            f"[StrategyHealthTracker] {strategy} failed "
+            f"(consecutive: {self._stats[key]['consecutive_failures']}, total: {self._stats[key]['failures']})"
+        )
+
+    def get_ordered_strategies(self) -> list[list[str]]:
+        """Return strategies ordered by reliability (best first)."""
+        self._maybe_decay()
+
+        def sort_key(s: tuple) -> tuple:
+            stats = self._stats[s]
+            total = stats["successes"] + stats["failures"]
+            if total == 0:
+                # Untested strategies get neutral priority (between good and bad)
+                return (1, 0)
+            success_rate = stats["successes"] / total
+            # Heavily deprioritize strategies with many consecutive failures
+            if stats["consecutive_failures"] >= self.CONSECUTIVE_FAIL_THRESHOLD:
+                return (0, success_rate)
+            return (2, success_rate)
+
+        ordered = sorted(self._stats.keys(), key=sort_key, reverse=True)
+        return [list(s) for s in ordered]
+
+    def get_health_report(self) -> dict:
+        """Return current health stats for all strategies (for debug endpoint)."""
+        report = {}
+        ordered = self.get_ordered_strategies()
+        for i, strategy in enumerate(ordered):
+            key = tuple(strategy)
+            stats = self._stats[key]
+            total = stats["successes"] + stats["failures"]
+            report[str(strategy)] = {
+                "rank": i + 1,
+                "successes": stats["successes"],
+                "failures": stats["failures"],
+                "consecutive_failures": stats["consecutive_failures"],
+                "success_rate": (
+                    round(stats["successes"] / total, 3) if total > 0 else None
+                ),
+                "last_success": stats["last_success"],
+                "last_failure": stats["last_failure"],
+            }
+        return report
+
+    def _maybe_decay(self) -> None:
+        """Decay failure counters periodically so dead strategies get retried."""
+        now = time.time()
+        if now - self._last_decay < self.DECAY_INTERVAL_S:
+            return
+        self._last_decay = now
+        for stats in self._stats.values():
+            stats["failures"] = max(0, stats["failures"] // 2)
+            stats["consecutive_failures"] = max(0, stats["consecutive_failures"] // 2)
+        logger.info("[StrategyHealthTracker] Decayed failure counters (6h interval)")
+
+
+# Global tracker instance for YouTube strategies
+youtube_strategy_tracker = StrategyHealthTracker(
+    [
+        ["android", "web"],
+        ["ios", "web"],
+        ["tv", "web"],
+    ]
+)
+
+
+async def download_from_url(
+    url: str,
+    output_dir: str,
+    audio_only: bool = True,
+) -> dict:
+    """
+    Download audio/video from any supported platform using yt-dlp.
+
+    Returns:
+        {
+            platform: str,
+            title: str,
+            duration: float,
+            file_path: str,
+            thumbnail_url: str | None,
+            has_video: bool,
+        }
+    """
+    try:
+        import yt_dlp
+    except ImportError:
+        raise HTTPException(
+            status_code=503,
+            detail="yt-dlp not installed. Run: pip install yt-dlp",
+        )
+
+    platform_name = detect_platform(url)
+
+    if audio_only:
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "outtmpl": os.path.join(output_dir, "audio.%(ext)s"),
+            "quiet": True,
+            "no_warnings": True,
+        }
+    else:
+        ydl_opts = {
+            "format": "bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+            "merge_output_format": "mp4",
+            "outtmpl": os.path.join(output_dir, "video.%(ext)s"),
+            "quiet": True,
+            "no_warnings": True,
+        }
+
+    # Platform-specific yt-dlp tweaks
+    if platform_name == "youtube":
+        # Use the health tracker to get strategies ordered by reliability
+        player_client_strategies = youtube_strategy_tracker.get_ordered_strategies()
+        logger.info(
+            f"[download_from_url] YouTube strategy order: {player_client_strategies}"
+        )
+    else:
+        # Vimeo, SoundCloud, and others: no special strategy needed
+        player_client_strategies = [None]
+
+    last_error = None
+    info = None
+    for strategy in player_client_strategies:
+        try:
+            if strategy is not None:
+                ydl_opts["extractor_args"] = {"youtube": {"player_client": strategy}}
+            logger.info(
+                f"[download_from_url] platform={platform_name}, strategy={strategy}, audio_only={audio_only}"
+            )
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+            last_error = None
+            if strategy is not None:
+                youtube_strategy_tracker.record_success(strategy)
+            break
+        except Exception as e:
+            last_error = e
+            if strategy is not None:
+                youtube_strategy_tracker.record_failure(strategy)
+            logger.warning(
+                f"[download_from_url] Strategy {strategy} failed: {type(e).__name__}: {e}"
+            )
+            # Clean partial downloads before retry
+            for f in os.listdir(output_dir):
+                fpath = os.path.join(output_dir, f)
+                if os.path.isfile(fpath):
+                    os.remove(fpath)
+            continue
+
+    if last_error is not None or info is None:
+        logger.error(
+            f"[download_from_url] All strategies failed for '{url}': {last_error}"
+        )
+        error_str = str(last_error).lower() if last_error else ""
+        if "sign in" in error_str or "bot" in error_str or "confirm" in error_str:
+            raise HTTPException(
+                status_code=502,
+                detail=f"{platform_name.title()} is blocking this request (bot detection). Try again later.",
+            )
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to download from {platform_name.title()}: {last_error}",
+        )
+
+    title = info.get("title", "Unknown")
+    duration = info.get("duration", 0) or 0
+    thumbnail_url = info.get("thumbnail") or info.get("thumbnails", [{}])[-1].get("url")
+
+    # SoundCloud (and other audio-only platforms) never have video
+    has_video = platform_name not in ("soundcloud",) and not audio_only
+
+    # Find the downloaded file
+    prefix = "audio." if audio_only else "video."
+    file_path = None
+    for f in os.listdir(output_dir):
+        if f.startswith(prefix) and not f.endswith(".part"):
+            file_path = os.path.join(output_dir, f)
+            break
+
+    if not file_path:
+        files_found = os.listdir(output_dir)
+        logger.error(
+            f"[download_from_url] No file found in {output_dir}: {files_found}"
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Downloaded file not found. Files: {files_found}",
+        )
+
+    return {
+        "platform": platform_name,
+        "title": title,
+        "duration": duration,
+        "file_path": file_path,
+        "thumbnail_url": thumbnail_url,
+        "has_video": has_video,
+    }
+
+
+# =============================================================================
+# Unified Analysis Endpoint (multi-platform)
+# =============================================================================
+
+
+class AnalyzeUrlRequest(BaseModel):
+    """Request for multi-platform audio analysis."""
+
+    url: str
+    prompts: Optional[str] = None
+    chunk_duration_s: float = 10.0
+    max_duration_s: float = 60.0
+
+
+class AnalyzeUrlChunkResult(BaseModel):
+    chunk_index: int
+    start_time_s: float
+    end_time_s: float
+    global_scores: dict[str, float]
+    frame_scores: dict[str, list[float]]
+
+
+class AnalyzeUrlResponse(BaseModel):
+    platform: str
+    title: str
+    duration_s: float
+    analyzed_duration_s: float
+    num_chunks: int
+    prompts: list[str]
+    chunks: list[AnalyzeUrlChunkResult]
+    aggregated_scores: dict[str, float]
+    timing: dict[str, float]
+
+
+@app.post("/analyze-url", response_model=AnalyzeUrlResponse)
+async def analyze_url(request: AnalyzeUrlRequest) -> AnalyzeUrlResponse:
+    """
+    Analyze audio from any supported URL (YouTube, Vimeo, SoundCloud, etc.).
+    Downloads audio, splits into chunks, and runs FLAM inference.
+    """
+    global flam_model, device
+
+    if flam_model is None:
+        raise HTTPException(status_code=503, detail="FLAM model not loaded.")
+
+    if request.prompts:
+        prompt_list = [p.strip() for p in request.prompts.split(";") if p.strip()]
+        if not prompt_list:
+            prompt_list = DEFAULT_PROMPTS
+    else:
+        prompt_list = DEFAULT_PROMPTS
+
+    timing: dict[str, float] = {}
+    t_start = time.perf_counter()
+
+    temp_dir = tempfile.mkdtemp(prefix="sonotag_url_")
+    try:
+        t_dl = time.perf_counter()
+        dl = await download_from_url(request.url, temp_dir, audio_only=True)
+        timing["download_ms"] = round((time.perf_counter() - t_dl) * 1000, 2)
+
+        logger.info(
+            f"[analyze-url] {dl['platform']}: {dl['title']} ({dl['duration']}s)"
+        )
+
+        t_load = time.perf_counter()
+        try:
+            full_audio, _sr = librosa.load(dl["file_path"], sr=SAMPLE_RATE, mono=True)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to load audio: {e}")
+        timing["load_ms"] = round((time.perf_counter() - t_load) * 1000, 2)
+
+        actual_duration = len(full_audio) / SAMPLE_RATE
+        max_samples = int(min(request.max_duration_s, actual_duration) * SAMPLE_RATE)
+        if len(full_audio) > max_samples:
+            full_audio = full_audio[:max_samples]
+            actual_duration = len(full_audio) / SAMPLE_RATE
+
+        chunk_samples = int(request.chunk_duration_s * SAMPLE_RATE)
+        chunk_results: list[AnalyzeUrlChunkResult] = []
+
+        t_inf = time.perf_counter()
+        for i, start_sample in enumerate(range(0, len(full_audio), chunk_samples)):
+            end_sample = min(start_sample + chunk_samples, len(full_audio))
+            chunk_audio = full_audio[start_sample:end_sample]
+
+            if len(chunk_audio) < EXPECTED_SAMPLES:
+                repeats_needed = int(np.ceil(EXPECTED_SAMPLES / len(chunk_audio)))
+                chunk_audio = np.tile(chunk_audio, repeats_needed)[:EXPECTED_SAMPLES]
+
+            audio_tensor = torch.tensor(chunk_audio).unsqueeze(0).to(device)
+
+            with torch.no_grad():
+                local_similarity = flam_model.get_local_similarity(
+                    audio=audio_tensor,
+                    text=prompt_list,
+                    method="unbiased",
+                    cross_product=True,
+                )
+                local_sim_np = local_similarity.squeeze(0).cpu().numpy()
+
+                frame_scores: dict[str, list[float]] = {}
+                global_scores: dict[str, float] = {}
+                for j, prompt in enumerate(prompt_list):
+                    scores_per_frame = local_sim_np[j].tolist()
+                    frame_scores[prompt] = [round(s, 4) for s in scores_per_frame]
+                    global_scores[prompt] = round(float(np.mean(local_sim_np[j])), 4)
+
+            chunk_results.append(
+                AnalyzeUrlChunkResult(
+                    chunk_index=i,
+                    start_time_s=round(start_sample / SAMPLE_RATE, 2),
+                    end_time_s=round(end_sample / SAMPLE_RATE, 2),
+                    global_scores=global_scores,
+                    frame_scores=frame_scores,
+                )
+            )
+
+        timing["inference_ms"] = round((time.perf_counter() - t_inf) * 1000, 2)
+
+        aggregated_scores = {}
+        for prompt in prompt_list:
+            all_chunk = [c.global_scores[prompt] for c in chunk_results]
+            aggregated_scores[prompt] = round(float(np.mean(all_chunk)), 4)
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    timing["total_ms"] = round((time.perf_counter() - t_start) * 1000, 2)
+
+    return AnalyzeUrlResponse(
+        platform=dl["platform"],
+        title=dl["title"],
+        duration_s=round(dl["duration"], 2),
+        analyzed_duration_s=round(actual_duration, 2),
+        num_chunks=len(chunk_results),
+        prompts=prompt_list,
+        chunks=chunk_results,
+        aggregated_scores=aggregated_scores,
+        timing=timing,
+    )
+
+
+# =============================================================================
+# Unified Prepare-Video / Prepare-Audio Endpoint (multi-platform)
+# =============================================================================
+
+
+class PrepareMediaRequest(BaseModel):
+    url: str
+
+
+class PrepareMediaResponse(BaseModel):
+    video_id: str
+    title: str
+    duration_s: float
+    video_url: str  # /stream-video/{id} or empty for audio-only
+    audio_url: str  # /stream-audio/{id} for audio-only platforms
+    thumbnail_url: str  # Album art for SoundCloud
+    has_video: bool
+    platform: str
+    ready: bool
+
+
+@app.post("/prepare-video", response_model=PrepareMediaResponse)
+async def prepare_video(request: PrepareMediaRequest) -> PrepareMediaResponse:
+    """
+    Prepare media for playback from any supported URL.
+    For video platforms (YouTube, Vimeo): downloads video → /stream-video/{id}
+    For audio-only (SoundCloud): downloads audio → /stream-audio/{id} + album art
+    """
+    url = (request.url or "").strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="No URL provided")
+
+    platform_name = detect_platform(url)
+    audio_only = platform_name == "soundcloud"
+    video_id = hashlib.md5(url.encode()).hexdigest()[:12]
+
+    # Check cache
+    if video_id in _prepared_videos:
+        cached = _prepared_videos[video_id]
+        return PrepareMediaResponse(
+            video_id=video_id,
+            title=cached["title"],
+            duration_s=cached["duration_s"],
+            video_url=f"/stream-video/{video_id}" if cached.get("has_video") else "",
+            audio_url=(
+                f"/stream-audio/{video_id}" if not cached.get("has_video") else ""
+            ),
+            thumbnail_url=cached.get("thumbnail_url", ""),
+            has_video=cached.get("has_video", True),
+            platform=cached.get("platform", "unknown"),
+            ready=True,
+        )
+
+    media_dir = os.path.join(tempfile.gettempdir(), f"sonotag_media_{video_id}")
+    os.makedirs(media_dir, exist_ok=True)
+
+    dl = await download_from_url(url, media_dir, audio_only=audio_only)
+
+    _prepared_videos[video_id] = {
+        "title": dl["title"],
+        "duration_s": dl["duration"],
+        "file_path": dl["file_path"],
+        "dir_path": media_dir,
+        "has_video": dl["has_video"],
+        "thumbnail_url": dl.get("thumbnail_url", ""),
+        "platform": dl["platform"],
+    }
+
+    logger.info(
+        f"[prepare-video] {dl['platform']}: {dl['title']} ({dl['duration']}s) has_video={dl['has_video']}"
+    )
+
+    return PrepareMediaResponse(
+        video_id=video_id,
+        title=dl["title"],
+        duration_s=dl["duration"],
+        video_url=f"/stream-video/{video_id}" if dl["has_video"] else "",
+        audio_url=f"/stream-audio/{video_id}" if not dl["has_video"] else "",
+        thumbnail_url=dl.get("thumbnail_url", "") or "",
+        has_video=dl["has_video"],
+        platform=dl["platform"],
+        ready=True,
+    )
+
+
+# =============================================================================
+# Audio Streaming (for SoundCloud and other audio-only platforms)
+# =============================================================================
+
+
+@app.get("/stream-audio/{video_id}")
+async def stream_audio(video_id: str):
+    """Stream audio for audio-only platforms (SoundCloud, etc.)."""
+    if video_id not in _prepared_videos:
+        raise HTTPException(
+            status_code=404, detail="Audio not found. Please prepare it first."
+        )
+
+    info = _prepared_videos[video_id]
+    file_path = info["file_path"]
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Audio file not found on disk.")
+
+    ext = os.path.splitext(file_path)[1].lower()
+    content_type_map = {
+        ".mp3": "audio/mpeg",
+        ".opus": "audio/opus",
+        ".ogg": "audio/ogg",
+        ".m4a": "audio/mp4",
+        ".wav": "audio/wav",
+        ".webm": "audio/webm",
+        ".flac": "audio/flac",
+    }
+    content_type = content_type_map.get(ext, "audio/mpeg")
+
+    return FileResponse(
+        file_path,
+        media_type=content_type,
+        headers={
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=3600",
+        },
+    )
+
+
+# =============================================================================
+# YouTube Analysis Endpoint (legacy — aliases to /analyze-url)
 # =============================================================================
 
 
@@ -1196,13 +1751,8 @@ async def analyze_youtube(request: YouTubeAnalysisRequest) -> YouTubeAnalysisRes
         video_duration = 0.0
 
         # Try download with multiple player_client strategies
-        # android+web is first because it's the only one confirmed working on Railway
-        # (see /debug/youtube-test results: SABR streaming blocks ios/web/mweb formats)
-        player_client_strategies = [
-            ["android", "web"],
-            ["ios", "web"],
-            ["tv", "web"],
-        ]
+        # Uses StrategyHealthTracker for dynamic ordering based on success/failure
+        player_client_strategies = youtube_strategy_tracker.get_ordered_strategies()
         last_error = None
         for strategy in player_client_strategies:
             try:
@@ -1212,10 +1762,12 @@ async def analyze_youtube(request: YouTubeAnalysisRequest) -> YouTubeAnalysisRes
                     info = ydl.extract_info(request.url, download=True)
                     video_title = info.get("title", "Unknown")
                     video_duration = info.get("duration", 0) or 0
+                youtube_strategy_tracker.record_success(strategy)
                 last_error = None
                 break
             except Exception as e:
                 last_error = e
+                youtube_strategy_tracker.record_failure(strategy)
                 logger.warning(
                     f"[analyze-youtube] Strategy {strategy} failed: {type(e).__name__}: {e}"
                 )
@@ -1444,13 +1996,8 @@ async def prepare_youtube_video(request: PrepareVideoRequest) -> PrepareVideoRes
     }
 
     # Try download with multiple player_client strategies
-    # android+web is first because it's the only one confirmed working on Railway
-    # (see /debug/youtube-test results: SABR streaming blocks ios/web/mweb formats)
-    player_client_strategies = [
-        ["android", "web"],
-        ["ios", "web"],
-        ["tv", "web"],
-    ]
+    # Uses StrategyHealthTracker for dynamic ordering based on success/failure
+    player_client_strategies = youtube_strategy_tracker.get_ordered_strategies()
     last_error = None
     for strategy in player_client_strategies:
         try:
@@ -1460,10 +2007,12 @@ async def prepare_youtube_video(request: PrepareVideoRequest) -> PrepareVideoRes
                 info = ydl.extract_info(request.url, download=True)
                 video_title = info.get("title", "Unknown")
                 video_duration = info.get("duration", 0) or 0
+            youtube_strategy_tracker.record_success(strategy)
             last_error = None
             break
         except Exception as e:
             last_error = e
+            youtube_strategy_tracker.record_failure(strategy)
             logger.warning(
                 f"[prepare-youtube-video] Strategy {strategy} failed: {type(e).__name__}: {e}"
             )
@@ -1631,10 +2180,13 @@ if os.path.exists(static_dir):
                 "classify",
                 "classify-local",
                 "analyze-youtube",
+                "analyze-url",
                 "prepare-youtube-video",
+                "prepare-video",
                 "cleanup-video",
             ]
             or path.startswith("stream-video/")
+            or path.startswith("stream-audio/")
             or path.startswith("cleanup-video/")
         ):
             raise HTTPException(status_code=404, detail="Not found")

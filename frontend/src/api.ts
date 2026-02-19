@@ -5,6 +5,8 @@ import type {
   PromptsResponse,
   YouTubeAnalysisResponse,
   PrepareVideoResponse,
+  AnalyzeUrlResponse,
+  PrepareMediaResponse,
 } from "./types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
@@ -270,4 +272,66 @@ export async function cleanupVideo(videoId: string): Promise<void> {
   await fetch(`${API_BASE_URL}/cleanup-video/${videoId}`, {
     method: "DELETE",
   });
+}
+
+// =============================================================================
+// Multi-Platform API (SoundCloud, Vimeo, etc.)
+// =============================================================================
+
+/**
+ * Analyze audio from any supported URL (YouTube, Vimeo, SoundCloud, etc.).
+ */
+export async function analyzeUrl(
+  url: string,
+  customPrompts?: string[],
+  chunkDurationS: number = 10.0,
+  maxDurationS: number = 60.0
+): Promise<AnalyzeUrlResponse> {
+  const response = await fetch(`${API_BASE_URL}/analyze-url`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      url,
+      prompts: customPrompts ? customPrompts.join("; ") : null,
+      chunk_duration_s: chunkDurationS,
+      max_duration_s: maxDurationS,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail || `Analysis failed: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Prepare media from any supported URL for local playback.
+ * Returns has_video=true for video platforms, has_video=false for audio-only (SoundCloud).
+ */
+export async function prepareMedia(
+  url: string
+): Promise<PrepareMediaResponse> {
+  if (DEBUG_API) console.log("[api] prepareMedia →", url);
+  const response = await fetch(`${API_BASE_URL}/prepare-video`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    if (DEBUG_API) console.error("[api] prepareMedia FAILED:", response.status, error);
+    throw new Error(error.detail || `Failed to prepare media: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Get the streaming URL for a prepared audio file (SoundCloud, etc.).
+ */
+export function getAudioStreamUrl(videoId: string): string {
+  return `${API_BASE_URL}/stream-audio/${videoId}`;
 }

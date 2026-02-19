@@ -22,8 +22,10 @@ import {
   prepareYouTubeVideo,
   getVideoStreamUrl,
   cleanupVideo,
+  prepareMedia,
+  getAudioStreamUrl,
 } from "./api";
-import type { PrepareVideoResponse } from "./types";
+import type { PrepareVideoResponse, PrepareMediaResponse } from "./types";
 
 // =============================================================================
 // Types & Interfaces (local to this component)
@@ -31,7 +33,7 @@ import type { PrepareVideoResponse } from "./types";
 
 type PermissionState = "unknown" | "granted" | "denied";
 type MonitoringStatus = "idle" | "running" | "stopped";
-type InputMode = "microphone" | "youtube";
+type InputMode = "microphone" | "youtube" | "soundcloud";
 
 // =============================================================================
 // Constants
@@ -214,6 +216,102 @@ const MUSIC_DECOMPOSITION_PROMPTS = [
 
 // Maximum prompts to show before collapsing
 const MAX_VISIBLE_PROMPTS = 10;
+
+// =============================================================================
+// SoundCloud-Specific Presets (genre + instrument focused)
+// =============================================================================
+
+// Genre presets for SoundCloud
+const SC_TECHNO_PROMPTS = [
+  "techno, electronic beat",
+  "synthesizer, synth pad",
+  "bass drop, sub bass",
+  "hi-hat, cymbals",
+  "kick drum, bass drum",
+  "acid synth, 303",
+  "ambient pad, drone",
+  "clap, snare",
+  "reverb, delay effect",
+  "vocal chop, vocal sample",
+];
+
+const SC_CLASSICAL_PROMPTS = [
+  "orchestra, orchestral",
+  "violin, strings",
+  "cello, low strings",
+  "piano, grand piano",
+  "flute, woodwind",
+  "oboe, bassoon",
+  "trumpet, brass",
+  "timpani, percussion",
+  "choir, choral singing",
+  "harp, plucked strings",
+  "conductor, silence between movements",
+  "applause, audience",
+];
+
+const SC_ROCK_PROMPTS = [
+  "electric guitar, distorted guitar",
+  "bass guitar, bass line",
+  "drums, drum kit",
+  "snare drum, hi-hat",
+  "male vocals, male singing",
+  "female vocals, female singing",
+  "guitar solo, lead guitar",
+  "power chord, heavy guitar",
+  "acoustic guitar, clean guitar",
+  "crowd cheering, audience",
+];
+
+const SC_JAZZ_PROMPTS = [
+  "saxophone, sax solo",
+  "trumpet, muted trumpet",
+  "piano, jazz piano",
+  "double bass, upright bass",
+  "drums, brushes on snare",
+  "hi-hat, ride cymbal",
+  "trombone, brass section",
+  "guitar, jazz guitar",
+  "vibraphone, mallet",
+  "male vocals, scat singing",
+  "female vocals, jazz singing",
+];
+
+const SC_HIPHOP_PROMPTS = [
+  "rap, rapping",
+  "beat, hip hop beat",
+  "bass, 808 bass",
+  "hi-hat, trap hi-hat",
+  "snare, clap",
+  "vocal sample, chopped vocals",
+  "synthesizer, synth melody",
+  "scratch, turntable",
+  "ad-lib, shout",
+  "silence, pause",
+];
+
+const SC_INSTRUMENTS_PROMPTS = [
+  "piano, grand piano",
+  "acoustic guitar",
+  "electric guitar, distorted guitar",
+  "bass guitar, bass",
+  "violin, fiddle",
+  "cello",
+  "drums, drum kit",
+  "synthesizer, synth",
+  "saxophone, sax",
+  "trumpet",
+  "flute",
+  "organ, keyboard",
+  "harp",
+  "harmonica",
+  "banjo",
+  "mandolin",
+  "accordion",
+  "male vocals, male singing",
+  "female vocals, female singing",
+  "beatboxing",
+];
 
 // =============================================================================
 // Color Themes
@@ -624,6 +722,27 @@ const [layoutMode, setLayoutMode] = useState<"immersive" | "classic">("immersive
   const [youtubeVideo, setYoutubeVideo] = useState<PrepareVideoResponse | null>(null);
   const [youtubeError, setYoutubeError] = useState<string>("");
 const [youtubeAnalyzing, setYoutubeAnalyzing] = useState<boolean>(false);
+
+  // SoundCloud state
+  const [soundcloudUrl, setSoundcloudUrl] = useState<string>("");
+  const [soundcloudPreparing, setSoundcloudPreparing] = useState<boolean>(false);
+  const [soundcloudMedia, setSoundcloudMedia] = useState<PrepareMediaResponse | null>(null);
+  const [soundcloudError, setSoundcloudError] = useState<string>("");
+  const [soundcloudAnalyzing, setSoundcloudAnalyzing] = useState<boolean>(false);
+  const soundcloudAudioRef = useRef<HTMLAudioElement>(null);
+  const soundcloudAudioContextRef = useRef<AudioContext | null>(null);
+  const soundcloudSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const soundcloudScriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const soundcloudAnalyserRef = useRef<AnalyserNode | null>(null);
+  const soundcloudAudioBufferRef = useRef<Float32Array[]>([]);
+  const soundcloudAnalyzingRef = useRef<boolean>(false);
+
+  // Custom SoundCloud player state
+  const [scIsPlaying, setScIsPlaying] = useState(false);
+  const [scCurrentTime, setScCurrentTime] = useState(0);
+  const [scDuration, setScDuration] = useState(0);
+  const [scVolume, setScVolume] = useState(1);
+  const [scIsSeeking, setScIsSeeking] = useState(false);
 const videoRef = useRef<HTMLVideoElement>(null);
   const videoAudioContextRef = useRef<AudioContext | null>(null);
   const videoSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
@@ -658,6 +777,10 @@ const videoRef = useRef<HTMLVideoElement>(null);
   const frameScoresRef = useRef<Record<string, number[]>>({}); // Frame-wise scores for temporal heatmap
   const promptsRef = useRef<string[]>(DEFAULT_PROMPTS);
   const normalizeScoresRef = useRef<boolean>(false);
+
+  // Heatmap backfill alignment: track frames between score updates
+  const heatmapFramesSinceUpdateRef = useRef<number>(0);
+  const prevScoresIdentityRef = useRef<Record<string, number> | null>(null);
 
   // Webcam refs
   const webcamRef = useRef<HTMLVideoElement>(null);
@@ -711,10 +834,10 @@ const videoRef = useRef<HTMLVideoElement>(null);
   }, [freqRange.max, freqRange.min]);
 
 // ---------------------------------------------------------------------------
-  // Video Heatmap Draw Loop (for YouTube mode)
+  // Video Heatmap Draw Loop (for YouTube/SoundCloud mode)
   // ---------------------------------------------------------------------------
   useEffect(() => {
-if (!youtubeAnalyzing || !heatmapRef.current || !spectrogramRef.current) return;
+if ((!youtubeAnalyzing && !soundcloudAnalyzing) || !heatmapRef.current || !spectrogramRef.current) return;
 
     const heatmapCanvas = heatmapRef.current;
     const heatmapContext = heatmapCanvas.getContext("2d");
@@ -728,32 +851,46 @@ if (!youtubeAnalyzing || !heatmapRef.current || !spectrogramRef.current) return;
     let animationId: number;
     let frameCount = 0;
 
+    // Spectrogram delay queue: buffers freq snapshots so the spectrogram
+    // draws audio from ~bufferSeconds ago (matching the FLAM scoring window).
+    const specQueue: Uint8Array[] = [];
+    const frameSkipVal = FRAME_SKIP_MAP[slideSpeed] || 1;
+    const drawnFps = 60 / frameSkipVal;
+    const specDelayFrames = Math.ceil(bufferSecondsRef.current * drawnFps);
+
     const drawVideoVisuals = (): void => {
       if (!heatmapRef.current || !heatmapContext || !spectrogramRef.current || !spectrogramContext) return;
 
-      // Frame skipping for slower scroll speeds
       frameCount += 1;
       const frameSkip = FRAME_SKIP_MAP[slideSpeed] || 1;
       const shouldDraw = frameCount % frameSkip === 0;
 
-      if (shouldDraw) {
-        // Draw spectrogram from video analyser
-        const analyser = videoAnalyserRef.current;
-        if (analyser) {
-          const bufferLength = analyser.frequencyBinCount;
-          const freqData = new Uint8Array(bufferLength);
-          analyser.getByteFrequencyData(freqData);
+      const hasScores = Object.keys(classificationScoresRef.current).length > 0;
 
-          // Shift spectrogram left by 1 pixel
+      // Always capture current freq data into the delay queue
+      const analyser = videoAnalyserRef.current || soundcloudAnalyserRef.current;
+      if (shouldDraw && analyser) {
+        const bufLen = analyser.frequencyBinCount;
+        const snap = new Uint8Array(bufLen);
+        analyser.getByteFrequencyData(snap);
+        specQueue.push(snap);
+      }
+
+      if (shouldDraw && hasScores) {
+        // Pop delayed spectrogram data (from ~bufferSeconds ago)
+        const delayed = specQueue.length > specDelayFrames ? specQueue.shift() : null;
+
+        if (delayed && analyser) {
+          const bufferLength = analyser.frequencyBinCount;
           spectrogramContext.drawImage(spectrogramCanvas, -1, 0);
           const range = freqRange.max - freqRange.min || 1;
           for (let y = 0; y < spectrogramCanvas.height; y += 1) {
             const freq = freqRange.min + (y / spectrogramCanvas.height) * range;
             const index = Math.floor((freq / nyquist) * bufferLength);
             const safeIndex = clamp(index, 0, bufferLength - 1);
-            const intensity = freqData[safeIndex] / 255;
-              const themeStops = COLOR_THEMES[colorThemeRef.current].stops;
-              spectrogramContext.fillStyle = getColorFromStops(intensity, themeStops);
+            const intensity = delayed[safeIndex] / 255;
+            const themeStops = COLOR_THEMES[colorThemeRef.current].stops;
+            spectrogramContext.fillStyle = getColorFromStops(intensity, themeStops);
             spectrogramContext.fillRect(
               spectrogramCanvas.width - 1,
               spectrogramCanvas.height - y - 1,
@@ -762,6 +899,7 @@ if (!youtubeAnalyzing || !heatmapRef.current || !spectrogramRef.current) return;
             );
           }
         }
+
 
         // Draw heatmap - ALWAYS shift to stay in sync with spectrogram
         heatmapContext.drawImage(heatmapCanvas, -1, 0);
@@ -812,7 +950,7 @@ if (!youtubeAnalyzing || !heatmapRef.current || !spectrogramRef.current) return;
         cancelAnimationFrame(animationId);
       }
     };
-  }, [youtubeAnalyzing, slideSpeed, freqRange.min, freqRange.max, nyquist, layoutMode]);
+  }, [youtubeAnalyzing, soundcloudAnalyzing, slideSpeed, freqRange.min, freqRange.max, nyquist, layoutMode]);
 
   // ---------------------------------------------------------------------------
   // Event Handlers
@@ -946,6 +1084,11 @@ useEffect(() => {
     youtubeAnalyzingRef.current = youtubeAnalyzing;
   }, [youtubeAnalyzing]);
 
+  // Keep soundcloudAnalyzingRef in sync with state
+  useEffect(() => {
+    soundcloudAnalyzingRef.current = soundcloudAnalyzing;
+  }, [soundcloudAnalyzing]);
+
   // Keep colorThemeRef in sync with state
   useEffect(() => {
     colorThemeRef.current = colorTheme;
@@ -1034,6 +1177,78 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
       setClassifyError("");
     } catch (err) {
       console.error("Video classification failed:", err);
+      setClassifyError(err instanceof Error ? err.message : "Classification failed");
+    } finally {
+      isClassifyingRef.current = false;
+      setIsClassifying(false);
+    }
+  }, []);
+
+  // SoundCloud audio classification (mirrors classifyVideoBuffer)
+  const classifySoundcloudBuffer = useCallback(async (sr: number): Promise<void> => {
+    if (isClassifyingRef.current || soundcloudAudioBufferRef.current.length === 0 || !soundcloudAnalyzingRef.current) {
+      if (!soundcloudAnalyzingRef.current) {
+        soundcloudAudioBufferRef.current = [];
+      }
+      return;
+    }
+
+    isClassifyingRef.current = true;
+    setIsClassifying(true);
+    const startTime = performance.now();
+
+    try {
+      const totalLength = soundcloudAudioBufferRef.current.reduce((sum, arr) => sum + arr.length, 0);
+      const allSamples = new Float32Array(totalLength);
+      let offset = 0;
+      for (const chunk of soundcloudAudioBufferRef.current) {
+        allSamples.set(chunk, offset);
+        offset += chunk.length;
+      }
+      soundcloudAudioBufferRef.current = [];
+
+      const resampledSamples = sr !== TARGET_SAMPLE_RATE
+        ? resampleAudio(allSamples, sr, TARGET_SAMPLE_RATE)
+        : allSamples;
+
+      const wavBlob = audioSamplesToWavBlob(resampledSamples, TARGET_SAMPLE_RATE);
+      const currentPrompts = promptsRef.current;
+      const result = await classifyAudioLocal(wavBlob, currentPrompts, "unbiased");
+
+      const elapsedMs = performance.now() - startTime;
+      classificationScoresRef.current = result.global_scores;
+      frameScoresRef.current = result.frame_scores;
+      setClassificationScores(result.global_scores);
+      setFrameScores(result.frame_scores);
+      setScoreHistory((prev) => {
+        const updated = { ...prev };
+        for (const [label, score] of Object.entries(result.global_scores)) {
+          if (!updated[label]) updated[label] = [];
+          updated[label].push(score);
+        }
+        return updated;
+      });
+      const topLabel = Object.entries(result.global_scores).reduce((best, [label, score]) =>
+        score > best.score ? { label, score } : best, { label: "", score: -1 }
+      ).label;
+      if (topLabel) setTopRankedHistory((prev) => [...prev, topLabel]);
+      setTotalInferences((prev) => prev + 1);
+      if (!sessionStartTime) setSessionStartTime(Date.now());
+      setLastInferenceTime(elapsedMs);
+      setInferenceCount((prev) => prev + 1);
+      if (result.timing) {
+        setTimingBreakdown({
+          read_ms: result.timing.read_ms,
+          decode_ms: result.timing.decode_ms,
+          tensor_ms: result.timing.tensor_ms,
+          audio_embed_ms: result.timing.local_similarity_ms,
+          similarity_ms: 0,
+          total_ms: result.timing.total_ms,
+        });
+      }
+      setClassifyError("");
+    } catch (err) {
+      console.error("SoundCloud classification failed:", err);
       setClassifyError(err instanceof Error ? err.message : "Classification failed");
     } finally {
       isClassifyingRef.current = false;
@@ -1316,19 +1531,21 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
           }
 
           // Shift heatmap left by 1 pixel
+        // Draw heatmap - ALWAYS shift to stay in sync with spectrogram
           heatmapContext.drawImage(heatmapCanvas, -1, 0);
+
           const currentPrompts = promptsRef.current;
           const currentScores = classificationScoresRef.current;
           const useNormalization = normalizeScoresRef.current;
           const rowHeight = heatmapCanvas.height / currentPrompts.length;
 
-          // Compute display values based on mode
-          // If normalize mode: use min-max normalization (lowest=0, highest=1)
-          // If clamp mode: clamp negative to 0
+          // Track frames since last score update (for backfill alignment)
+          heatmapFramesSinceUpdateRef.current += 1;
+
+          // Compute display values (use 0 if no scores yet)
           let displayValues: Record<string, number> = {};
           if (Object.keys(currentScores).length > 0) {
             if (useNormalization) {
-              // Min-max normalization: stretch to fill 0-1 range
               const values = Object.values(currentScores);
               const min = Math.min(...values);
               const max = Math.max(...values);
@@ -1337,14 +1554,41 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                 displayValues[key] = (val - min) / range;
               }
             } else {
-              // Clamp mode: negative → 0
               for (const [key, val] of Object.entries(currentScores)) {
                 displayValues[key] = Math.max(0, Math.min(1, val));
               }
             }
           }
 
-        currentPrompts.forEach((prompt, row) => {
+          // Backfill: when new scores arrive, repaint the recent columns that
+          // were drawn with stale scores during the buffer+inference window.
+          // This aligns the heatmap with the spectrogram visually.
+          if (currentScores !== prevScoresIdentityRef.current && Object.keys(currentScores).length > 0) {
+            const backfillPixels = Math.min(
+              heatmapFramesSinceUpdateRef.current,
+              heatmapCanvas.width - 1
+            );
+
+            if (backfillPixels > 1) {
+              currentPrompts.forEach((prompt, row) => {
+                const value = displayValues[prompt] ?? 0;
+                const themeStops = COLOR_THEMES[colorThemeRef.current].stops;
+                heatmapContext.fillStyle = getColorFromStops(value, themeStops);
+                heatmapContext.fillRect(
+                  heatmapCanvas.width - backfillPixels,
+                  row * rowHeight,
+                  backfillPixels,
+                  rowHeight
+                );
+              });
+            }
+
+            prevScoresIdentityRef.current = currentScores;
+            heatmapFramesSinceUpdateRef.current = 0;
+          }
+
+          // Draw current column at right edge
+          currentPrompts.forEach((prompt, row) => {
             const value = displayValues[prompt] ?? 0;
             const themeStops = COLOR_THEMES[colorThemeRef.current].stops;
             heatmapContext.fillStyle = getColorFromStops(value, themeStops);
@@ -1355,9 +1599,10 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               rowHeight
             );
           });
-        }
 
-        rafRef.current = requestAnimationFrame(draw);
+          }
+
+          rafRef.current = requestAnimationFrame(draw);
       };
 
       analyserRef.current = analyser;
@@ -1542,8 +1787,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
         {/* Top Header */}
         <header className="immersive-header">
           <div className="logo">
-            <span className="logo-icon">🎧</span>
-            <span>SonoTag</span>
+                        <span>SonoTag</span>
           </div>
 
           <div className="controls-row">
@@ -1555,9 +1799,23 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                 onClick={() => {
                   setInputMode("youtube");
                   if (status === "running") stopMonitoring();
+                  setSoundcloudAnalyzing(false);
+                  soundcloudAudioBufferRef.current = [];
                 }}
               >
                 YouTube
+              </button>
+              <button
+                type="button"
+                className={`mode-tab ${inputMode === "soundcloud" ? "active" : ""}`}
+                onClick={() => {
+                  setInputMode("soundcloud");
+                  if (status === "running") stopMonitoring();
+                  setYoutubeAnalyzing(false);
+                  videoAudioBufferRef.current = [];
+                }}
+              >
+                SoundCloud
               </button>
               <button
                 type="button"
@@ -1566,6 +1824,8 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                   setInputMode("microphone");
                   setYoutubeAnalyzing(false);
                   videoAudioBufferRef.current = [];
+                  setSoundcloudAnalyzing(false);
+                  soundcloudAudioBufferRef.current = [];
                 }}
               >
                 Microphone
@@ -1747,6 +2007,28 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                         title={showVideoModal ? "Hide Video" : "Show Video"}
                       >
                         Video
+                      </button>
+                    )}
+
+                    {inputMode === "soundcloud" && soundcloudMedia && (
+                      <button
+                        type="button"
+                        onClick={() => setShowVideoModal(!showVideoModal)}
+                        style={{
+                          padding: "8px 16px",
+                          fontSize: "13px",
+                          fontWeight: 500,
+                          color: showVideoModal ? "var(--accent)" : "var(--muted)",
+                          background: showVideoModal ? "rgba(255, 122, 61, 0.2)" : "rgba(15, 21, 32, 0.8)",
+                          border: "1px solid var(--border)",
+                          borderRadius: "8px",
+                          cursor: "pointer",
+                          transition: "all 0.2s ease",
+                          width: "100%",
+                        }}
+                        title={showVideoModal ? "Hide Player" : "Show Player"}
+                      >
+                        Player
                       </button>
                     )}
 
@@ -2141,6 +2423,263 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
             />
 
             {/* Resize handle - bottom right corner */}
+            <div
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setIsResizingModal(true);
+                resizeStartRef.current = {
+                  width: videoModalSize.width,
+                  height: videoModalSize.height,
+                  mouseX: e.clientX,
+                  mouseY: e.clientY,
+                };
+              }}
+              style={{
+                position: "absolute",
+                bottom: 0,
+                right: 0,
+                width: "16px",
+                height: "16px",
+                cursor: "nwse-resize",
+                background: "linear-gradient(135deg, transparent 50%, rgba(255,255,255,0.2) 50%)",
+              }}
+            />
+          </div>
+        )}
+
+        {/* Floating SoundCloud Player Modal - album art + audio */}
+        {inputMode === "soundcloud" && soundcloudMedia && (
+          <div
+            className="floating-video-modal"
+            style={{
+              position: "fixed",
+              left: videoModalPosition.x,
+              top: videoModalPosition.y,
+              width: videoModalSize.width,
+              height: videoModalSize.height,
+              zIndex: 500,
+              background: "rgba(15, 20, 30, 0.55)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              visibility: showVideoModal ? "visible" : "hidden",
+              opacity: showVideoModal ? 1 : 0,
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              borderRadius: "12px",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+              transition: "opacity 0.2s ease, visibility 0.2s ease",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+            }}
+          >
+            {/* Drag handle */}
+            <div
+              className="modal-drag-handle"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setIsDraggingModal(true);
+                dragOffsetRef.current = {
+                  x: e.clientX - videoModalPosition.x,
+                  y: e.clientY - videoModalPosition.y,
+                };
+              }}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "6px 10px",
+                cursor: "grab",
+                userSelect: "none",
+                borderBottom: "1px solid rgba(255,255,255,0.05)",
+                flexShrink: 0,
+              }}
+            >
+              <span style={{ fontSize: "11px", color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "80%" }}>
+                {soundcloudMedia.title}
+              </span>
+              <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>
+                {Math.floor(soundcloudMedia.duration_s / 60)}:{String(Math.floor(soundcloudMedia.duration_s % 60)).padStart(2, "0")}
+              </span>
+            </div>
+
+            {/* Album art */}
+            {soundcloudMedia.thumbnail_url && (
+              <img
+                src={soundcloudMedia.thumbnail_url}
+                alt={soundcloudMedia.title}
+                style={{
+                  width: "100%",
+                  flex: 1,
+                  objectFit: "cover",
+                  background: "#000",
+                  display: "block",
+                  minHeight: 0,
+                }}
+              />
+            )}
+
+            {/* Hidden audio element (drives playback + AudioContext) */}
+            <audio
+              ref={soundcloudAudioRef}
+              src={getAudioStreamUrl(soundcloudMedia.video_id)}
+              crossOrigin="anonymous"
+              style={{ display: "none" }}
+              onPlay={() => {
+                setScIsPlaying(true);
+                if (!soundcloudAudioRef.current) return;
+                soundcloudAnalyzingRef.current = true;
+                if (!soundcloudAudioContextRef.current) {
+                  const audioContext = new AudioContext();
+                  const source = audioContext.createMediaElementSource(soundcloudAudioRef.current);
+                  const scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+                  const analyser = audioContext.createAnalyser();
+                  analyser.fftSize = 2048;
+                  analyser.smoothingTimeConstant = 0.8;
+                  source.connect(analyser);
+                  source.connect(scriptProcessor);
+                  scriptProcessor.connect(audioContext.destination);
+                  source.connect(audioContext.destination);
+                  let currentBufferSamples = 0;
+                  scriptProcessor.onaudioprocess = (event) => {
+                    if (!soundcloudAnalyzingRef.current) return;
+                    const inputData = event.inputBuffer.getChannelData(0);
+                    const samples = new Float32Array(inputData);
+                    soundcloudAudioBufferRef.current.push(samples);
+                    currentBufferSamples += samples.length;
+                    const currentMaxSamples = audioContext.sampleRate * bufferSecondsRef.current;
+                    if (currentBufferSamples >= currentMaxSamples) {
+                      currentBufferSamples = 0;
+                      classifySoundcloudBuffer(audioContext.sampleRate);
+                    }
+                  };
+                  soundcloudAudioContextRef.current = audioContext;
+                  soundcloudSourceRef.current = source;
+                  soundcloudScriptProcessorRef.current = scriptProcessor;
+                  soundcloudAnalyserRef.current = analyser;
+                }
+                setSoundcloudAnalyzing(true);
+              }}
+              onPause={() => {
+                setScIsPlaying(false);
+                soundcloudAnalyzingRef.current = false;
+                setSoundcloudAnalyzing(false);
+                soundcloudAudioBufferRef.current = [];
+              }}
+              onEnded={() => {
+                setScIsPlaying(false);
+                soundcloudAnalyzingRef.current = false;
+                setSoundcloudAnalyzing(false);
+                soundcloudAudioBufferRef.current = [];
+              }}
+              onTimeUpdate={() => {
+                if (!scIsSeeking && soundcloudAudioRef.current) setScCurrentTime(soundcloudAudioRef.current.currentTime);
+              }}
+              onLoadedMetadata={() => {
+                if (soundcloudAudioRef.current) setScDuration(soundcloudAudioRef.current.duration);
+              }}
+              onError={() => {
+                setSoundcloudError("Audio playback failed. The track may be paywalled (SoundCloud Go+).");
+              }}
+            />
+
+            {/* Custom player controls */}
+            <div style={{
+              display: "flex", alignItems: "center", gap: "10px",
+              padding: "8px 12px", background: "rgba(0, 0, 0, 0.5)",
+              borderTop: "1px solid rgba(255, 255, 255, 0.06)", flexShrink: 0,
+            }}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!soundcloudAudioRef.current) return;
+                  if (scIsPlaying) soundcloudAudioRef.current.pause();
+                  else soundcloudAudioRef.current.play();
+                }}
+                style={{
+                  width: "32px", height: "32px", borderRadius: "50%", border: "none",
+                  background: "rgba(255, 255, 255, 0.1)", color: "#fff", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: "14px", flexShrink: 0, transition: "background 0.15s ease",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.2)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; }}
+              >
+                {scIsPlaying ? "⏸" : "▶"}
+              </button>
+
+              <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.6)", fontFamily: "'Sora', monospace", minWidth: "36px", flexShrink: 0 }}>
+                {Math.floor(scCurrentTime / 60)}:{String(Math.floor(scCurrentTime % 60)).padStart(2, "0")}
+              </span>
+
+              <div
+                style={{ flex: 1, height: "4px", background: "rgba(255,255,255,0.1)", borderRadius: "2px", cursor: "pointer", position: "relative", minWidth: 0 }}
+                onClick={(e) => {
+                  if (!soundcloudAudioRef.current || !scDuration) return;
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                  soundcloudAudioRef.current.currentTime = ratio * scDuration;
+                  setScCurrentTime(ratio * scDuration);
+                }}
+                onMouseDown={(e) => {
+                  setScIsSeeking(true);
+                  const bar = e.currentTarget;
+                  const onMove = (ev: MouseEvent) => {
+                    if (!soundcloudAudioRef.current || !scDuration) return;
+                    const rect = bar.getBoundingClientRect();
+                    const ratio = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+                    setScCurrentTime(ratio * scDuration);
+                  };
+                  const onUp = (ev: MouseEvent) => {
+                    if (soundcloudAudioRef.current && scDuration) {
+                      const rect = bar.getBoundingClientRect();
+                      const ratio = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+                      soundcloudAudioRef.current.currentTime = ratio * scDuration;
+                    }
+                    setScIsSeeking(false);
+                    window.removeEventListener("mousemove", onMove);
+                    window.removeEventListener("mouseup", onUp);
+                  };
+                  window.addEventListener("mousemove", onMove);
+                  window.addEventListener("mouseup", onUp);
+                }}
+              >
+                <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${scDuration ? (scCurrentTime / scDuration) * 100 : 0}%`, background: "var(--accent)", borderRadius: "2px", transition: scIsSeeking ? "none" : "width 0.1s linear" }} />
+                <div style={{ position: "absolute", top: "-4px", left: `${scDuration ? (scCurrentTime / scDuration) * 100 : 0}%`, width: "12px", height: "12px", borderRadius: "50%", background: "#fff", transform: "translateX(-50%)", boxShadow: "0 1px 4px rgba(0,0,0,0.4)", opacity: 0.9, transition: scIsSeeking ? "none" : "left 0.1s linear" }} />
+              </div>
+
+              <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", fontFamily: "'Sora', monospace", minWidth: "36px", flexShrink: 0, textAlign: "right" }}>
+                {Math.floor(scDuration / 60)}:{String(Math.floor(scDuration % 60)).padStart(2, "0")}
+              </span>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "4px", flexShrink: 0 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!soundcloudAudioRef.current) return;
+                    const newVol = scVolume > 0 ? 0 : 1;
+                    soundcloudAudioRef.current.volume = newVol;
+                    setScVolume(newVol);
+                  }}
+                  style={{ background: "none", border: "none", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontSize: "14px", padding: "2px", lineHeight: 1 }}
+                >
+                  {scVolume === 0 ? "🔇" : scVolume < 0.5 ? "🔉" : "🔊"}
+                </button>
+                <input
+                  type="range"
+                  min={0} max={1} step={0.05}
+                  value={scVolume}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setScVolume(v);
+                    if (soundcloudAudioRef.current) soundcloudAudioRef.current.volume = v;
+                  }}
+                  style={{ width: "50px", height: "3px", accentColor: "var(--accent)", cursor: "pointer" }}
+                />
+              </div>
+            </div>
+
+
+            {/* Resize handle */}
             <div
               onMouseDown={(e) => {
                 e.preventDefault();
@@ -3571,6 +4110,81 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                   <span style={{ fontSize: "11px", color: "var(--success)" }}>● Analyzing</span>
                 )}
               </div>
+            ) : inputMode === "soundcloud" && soundcloudMedia ? (
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ fontSize: "12px", color: "var(--muted)" }}>{soundcloudMedia.title}</span>
+                {soundcloudAnalyzing && (
+                  <span style={{ fontSize: "11px", color: "var(--success)" }}>● Analyzing</span>
+                )}
+              </div>
+            ) : inputMode === "soundcloud" ? (
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1 }}>
+                <input
+                  type="text"
+                  value={soundcloudUrl}
+                  onChange={(e) => setSoundcloudUrl(e.target.value)}
+                  onKeyDown={async (e) => {
+                    if (e.key === "Enter" && soundcloudUrl.trim() && !soundcloudPreparing) {
+                      setSoundcloudPreparing(true);
+                      setSoundcloudError("");
+                      try {
+                        const result = await prepareMedia(soundcloudUrl);
+                        setSoundcloudMedia(result);
+                      } catch (err) {
+                        setSoundcloudError(err instanceof Error ? err.message : "Failed to prepare audio");
+                      } finally {
+                        setSoundcloudPreparing(false);
+                      }
+                    }
+                  }}
+                  placeholder="Paste SoundCloud URL and press Enter..."
+                  style={{
+                    flex: 1,
+                    background: "rgba(0, 0, 0, 0.4)",
+                    border: "1px solid rgba(255, 255, 255, 0.1)",
+                    borderRadius: "6px",
+                    padding: "7px 12px",
+                    fontSize: "12px",
+                    color: "var(--text)",
+                    outline: "none",
+                    minWidth: 0,
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={soundcloudPreparing || !soundcloudUrl.trim()}
+                  onClick={async () => {
+                    if (!soundcloudUrl.trim() || soundcloudPreparing) return;
+                    setSoundcloudPreparing(true);
+                    setSoundcloudError("");
+                    try {
+                      const result = await prepareMedia(soundcloudUrl);
+                      setSoundcloudMedia(result);
+                    } catch (err) {
+                      setSoundcloudError(err instanceof Error ? err.message : "Failed to prepare audio");
+                    } finally {
+                      setSoundcloudPreparing(false);
+                    }
+                  }}
+                  style={{
+                    background: "var(--accent)",
+                    border: "none",
+                    borderRadius: "6px",
+                    padding: "7px 16px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    color: "#000",
+                    cursor: soundcloudPreparing || !soundcloudUrl.trim() ? "default" : "pointer",
+                    opacity: soundcloudPreparing || !soundcloudUrl.trim() ? 0.5 : 1,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {soundcloudPreparing ? "Loading..." : "Load"}
+                </button>
+                {soundcloudError && (
+                  <span style={{ fontSize: "11px", color: "#f04040", whiteSpace: "nowrap" }}>{soundcloudError}</span>
+                )}
+              </div>
             ) : inputMode === "youtube" ? (
               <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1 }}>
                 <input
@@ -3677,56 +4291,135 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
 
           <div className="footer-divider" />
 
-          {/* Preset Buttons */}
+          {/* Preset Buttons — swap based on input mode */}
           <div className="footer-section">
-            <button
-              type="button"
-              className={`preset-btn ${prompts === DIALOG_MOVIE_PROMPTS ? "active" : ""}`}
-              onClick={() => {
-                setPrompts(DIALOG_MOVIE_PROMPTS);
-                setPromptInput(DIALOG_MOVIE_PROMPTS.join("; "));
-                setClassificationScores({});
-                setMusicDecomposition(false);
-              }}
-            >
-              Dialog
-            </button>
-            <button
-              type="button"
-              className={`preset-btn ${prompts === ACTION_MOVIE_PROMPTS ? "active" : ""}`}
-              onClick={() => {
-                setPrompts(ACTION_MOVIE_PROMPTS);
-                setPromptInput(ACTION_MOVIE_PROMPTS.join("; "));
-                setClassificationScores({});
-                setMusicDecomposition(false);
-              }}
-            >
-              Action
-            </button>
-            <button
-              type="button"
-              className={`preset-btn ${prompts === SPORTS_PROMPTS ? "active" : ""}`}
-              onClick={() => {
-                setPrompts(SPORTS_PROMPTS);
-                setPromptInput(SPORTS_PROMPTS.join("; "));
-                setClassificationScores({});
-                setMusicDecomposition(false);
-              }}
-            >
-              Sports
-            </button>
-            <button
-              type="button"
-              className={`preset-btn ${musicDecomposition ? "active" : ""}`}
-              onClick={() => {
-                setPrompts(MUSIC_DECOMPOSITION_PROMPTS);
-                setPromptInput(MUSIC_DECOMPOSITION_PROMPTS.join("; "));
-                setClassificationScores({});
-                setMusicDecomposition(true);
-              }}
-            >
-              Music
-            </button>
+            {inputMode === "soundcloud" ? (
+              <>
+                <button
+                  type="button"
+                  className={`preset-btn ${prompts === SC_TECHNO_PROMPTS ? "active" : ""}`}
+                  onClick={() => {
+                    setPrompts(SC_TECHNO_PROMPTS);
+                    setPromptInput(SC_TECHNO_PROMPTS.join("; "));
+                    setClassificationScores({});
+                    setMusicDecomposition(false);
+                  }}
+                >
+                  Techno
+                </button>
+                <button
+                  type="button"
+                  className={`preset-btn ${prompts === SC_ROCK_PROMPTS ? "active" : ""}`}
+                  onClick={() => {
+                    setPrompts(SC_ROCK_PROMPTS);
+                    setPromptInput(SC_ROCK_PROMPTS.join("; "));
+                    setClassificationScores({});
+                    setMusicDecomposition(false);
+                  }}
+                >
+                  Rock
+                </button>
+                <button
+                  type="button"
+                  className={`preset-btn ${prompts === SC_JAZZ_PROMPTS ? "active" : ""}`}
+                  onClick={() => {
+                    setPrompts(SC_JAZZ_PROMPTS);
+                    setPromptInput(SC_JAZZ_PROMPTS.join("; "));
+                    setClassificationScores({});
+                    setMusicDecomposition(false);
+                  }}
+                >
+                  Jazz
+                </button>
+                <button
+                  type="button"
+                  className={`preset-btn ${prompts === SC_CLASSICAL_PROMPTS ? "active" : ""}`}
+                  onClick={() => {
+                    setPrompts(SC_CLASSICAL_PROMPTS);
+                    setPromptInput(SC_CLASSICAL_PROMPTS.join("; "));
+                    setClassificationScores({});
+                    setMusicDecomposition(false);
+                  }}
+                >
+                  Classical
+                </button>
+                <button
+                  type="button"
+                  className={`preset-btn ${prompts === SC_HIPHOP_PROMPTS ? "active" : ""}`}
+                  onClick={() => {
+                    setPrompts(SC_HIPHOP_PROMPTS);
+                    setPromptInput(SC_HIPHOP_PROMPTS.join("; "));
+                    setClassificationScores({});
+                    setMusicDecomposition(false);
+                  }}
+                >
+                  Hip-Hop
+                </button>
+                <button
+                  type="button"
+                  className={`preset-btn ${prompts === SC_INSTRUMENTS_PROMPTS ? "active" : ""}`}
+                  onClick={() => {
+                    setPrompts(SC_INSTRUMENTS_PROMPTS);
+                    setPromptInput(SC_INSTRUMENTS_PROMPTS.join("; "));
+                    setClassificationScores({});
+                    setMusicDecomposition(true);
+                  }}
+                >
+                  Instruments
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className={`preset-btn ${prompts === DIALOG_MOVIE_PROMPTS ? "active" : ""}`}
+                  onClick={() => {
+                    setPrompts(DIALOG_MOVIE_PROMPTS);
+                    setPromptInput(DIALOG_MOVIE_PROMPTS.join("; "));
+                    setClassificationScores({});
+                    setMusicDecomposition(false);
+                  }}
+                >
+                  Dialog
+                </button>
+                <button
+                  type="button"
+                  className={`preset-btn ${prompts === ACTION_MOVIE_PROMPTS ? "active" : ""}`}
+                  onClick={() => {
+                    setPrompts(ACTION_MOVIE_PROMPTS);
+                    setPromptInput(ACTION_MOVIE_PROMPTS.join("; "));
+                    setClassificationScores({});
+                    setMusicDecomposition(false);
+                  }}
+                >
+                  Action
+                </button>
+                <button
+                  type="button"
+                  className={`preset-btn ${prompts === SPORTS_PROMPTS ? "active" : ""}`}
+                  onClick={() => {
+                    setPrompts(SPORTS_PROMPTS);
+                    setPromptInput(SPORTS_PROMPTS.join("; "));
+                    setClassificationScores({});
+                    setMusicDecomposition(false);
+                  }}
+                >
+                  Sports
+                </button>
+                <button
+                  type="button"
+                  className={`preset-btn ${musicDecomposition ? "active" : ""}`}
+                  onClick={() => {
+                    setPrompts(MUSIC_DECOMPOSITION_PROMPTS);
+                    setPromptInput(MUSIC_DECOMPOSITION_PROMPTS.join("; "));
+                    setClassificationScores({});
+                    setMusicDecomposition(true);
+                  }}
+                >
+                  Music
+                </button>
+              </>
+            )}
           </div>
 
           <div className="footer-divider" />
@@ -4300,6 +4993,30 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
             <button
               type="button"
               onClick={() => {
+                setInputMode("soundcloud");
+                if (status === "running") {
+                  stopMonitoring();
+                }
+                setYoutubeAnalyzing(false);
+                videoAudioBufferRef.current = [];
+              }}
+              style={{
+                flex: 1,
+                padding: "0.75rem",
+                background: inputMode === "soundcloud" ? "rgba(255, 122, 61, 0.2)" : "transparent",
+                border: "none",
+                borderBottom: inputMode === "soundcloud" ? "2px solid #ff7a3d" : "2px solid transparent",
+                color: inputMode === "soundcloud" ? "#ff7a3d" : "#888",
+                cursor: "pointer",
+                fontSize: "0.9rem",
+                fontWeight: inputMode === "soundcloud" ? 600 : 400
+              }}
+            >
+              SoundCloud
+            </button>
+            <button
+              type="button"
+              onClick={() => {
                 setInputMode("microphone");
                 // Stop YouTube analysis and cleanup
                 setYoutubeAnalyzing(false);
@@ -4540,6 +5257,198 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               </p>
             </div>
           </section>
+          )}
+
+          {/* SoundCloud Mode */}
+          {inputMode === "soundcloud" && (
+            <section className="block">
+              <h2>SoundCloud Live Analysis</h2>
+              <div className="stack">
+                <label className="label" htmlFor="soundcloud-url">
+                  SoundCloud track URL
+                </label>
+                <input
+                  id="soundcloud-url"
+                  type="text"
+                  placeholder="https://soundcloud.com/artist/track"
+                  value={soundcloudUrl}
+                  onChange={(e) => setSoundcloudUrl(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "0.5rem",
+                    borderRadius: "4px",
+                    border: "1px solid #444",
+                    background: "#1a1a1a",
+                    color: "#eee"
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!soundcloudUrl.trim()) {
+                      setSoundcloudError("Please enter a SoundCloud URL");
+                      return;
+                    }
+
+                    // Cleanup previous audio context
+                    if (soundcloudScriptProcessorRef.current) {
+                      soundcloudScriptProcessorRef.current.disconnect();
+                      soundcloudScriptProcessorRef.current = null;
+                    }
+                    if (soundcloudSourceRef.current) {
+                      soundcloudSourceRef.current.disconnect();
+                      soundcloudSourceRef.current = null;
+                    }
+                    if (soundcloudAnalyserRef.current) {
+                      soundcloudAnalyserRef.current.disconnect();
+                      soundcloudAnalyserRef.current = null;
+                    }
+                    if (soundcloudAudioContextRef.current) {
+                      soundcloudAudioContextRef.current.close();
+                      soundcloudAudioContextRef.current = null;
+                    }
+                    soundcloudAudioBufferRef.current = [];
+                    setSoundcloudAnalyzing(false);
+
+                    setSoundcloudPreparing(true);
+                    setSoundcloudError("");
+                    setSoundcloudMedia(null);
+                    try {
+                      const result = await prepareMedia(soundcloudUrl);
+                      setSoundcloudMedia(result);
+                    } catch (err) {
+                      setSoundcloudError(err instanceof Error ? err.message : "Failed to prepare audio");
+                    } finally {
+                      setSoundcloudPreparing(false);
+                    }
+                  }}
+                  disabled={soundcloudPreparing || !modelStatus?.loaded}
+                >
+                  {soundcloudPreparing ? "Downloading..." : "Load Track"}
+                </button>
+                {soundcloudError && <p className="error">{soundcloudError}</p>}
+                {soundcloudMedia && (
+                  <div style={{
+                    padding: "0.75rem",
+                    background: "rgba(0,0,0,0.3)",
+                    borderRadius: "6px",
+                    fontSize: "0.8rem"
+                  }}>
+                    <div style={{ fontWeight: 600, marginBottom: "0.5rem" }}>
+                      {soundcloudMedia.title}
+                    </div>
+                    <div className="info-line">
+                      <span>Duration</span>
+                      <span>{Math.floor(soundcloudMedia.duration_s / 60)}:{String(Math.floor(soundcloudMedia.duration_s % 60)).padStart(2, "0")}</span>
+                    </div>
+                    {soundcloudMedia.thumbnail_url && (
+                      <img
+                        src={soundcloudMedia.thumbnail_url}
+                        alt={soundcloudMedia.title}
+                        style={{
+                          width: "100%",
+                          borderRadius: "4px",
+                          marginTop: "0.5rem",
+                          maxHeight: "200px",
+                          objectFit: "cover",
+                        }}
+                      />
+                    )}
+                    <audio
+                      ref={soundcloudAudioRef}
+                      src={getAudioStreamUrl(soundcloudMedia.video_id)}
+                      crossOrigin="anonymous"
+                      style={{ display: "none" }}
+                      onPlay={() => {
+                        setScIsPlaying(true);
+                        if (!soundcloudAudioRef.current) return;
+                        soundcloudAnalyzingRef.current = true;
+                        if (!soundcloudAudioContextRef.current) {
+                          const audioContext = new AudioContext();
+                          const source = audioContext.createMediaElementSource(soundcloudAudioRef.current);
+                          const scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+                          const analyser = audioContext.createAnalyser();
+                          analyser.fftSize = 2048;
+                          analyser.smoothingTimeConstant = 0.8;
+                          source.connect(analyser);
+                          source.connect(scriptProcessor);
+                          scriptProcessor.connect(audioContext.destination);
+                          source.connect(audioContext.destination);
+                          let currentBufferSamples = 0;
+                          scriptProcessor.onaudioprocess = (event) => {
+                            if (!soundcloudAnalyzingRef.current) return;
+                            const inputData = event.inputBuffer.getChannelData(0);
+                            const samples = new Float32Array(inputData);
+                            soundcloudAudioBufferRef.current.push(samples);
+                            currentBufferSamples += samples.length;
+                            const currentMaxSamples = audioContext.sampleRate * bufferSecondsRef.current;
+                            if (currentBufferSamples >= currentMaxSamples) {
+                              currentBufferSamples = 0;
+                              classifySoundcloudBuffer(audioContext.sampleRate);
+                            }
+                          };
+                          soundcloudAudioContextRef.current = audioContext;
+                          soundcloudSourceRef.current = source;
+                          soundcloudScriptProcessorRef.current = scriptProcessor;
+                          soundcloudAnalyserRef.current = analyser;
+                        }
+                        setSoundcloudAnalyzing(true);
+                      }}
+                      onPause={() => { setScIsPlaying(false); soundcloudAnalyzingRef.current = false; setSoundcloudAnalyzing(false); soundcloudAudioBufferRef.current = []; }}
+                      onEnded={() => { setScIsPlaying(false); soundcloudAnalyzingRef.current = false; setSoundcloudAnalyzing(false); soundcloudAudioBufferRef.current = []; }}
+                      onTimeUpdate={() => { if (!scIsSeeking && soundcloudAudioRef.current) setScCurrentTime(soundcloudAudioRef.current.currentTime); }}
+                      onLoadedMetadata={() => { if (soundcloudAudioRef.current) setScDuration(soundcloudAudioRef.current.duration); }}
+                      onError={() => { setSoundcloudError("Audio playback failed. The track may be paywalled (SoundCloud Go+)."); }}
+                    />
+                    {/* Custom player controls (classic) */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "0.5rem", padding: "8px 10px", background: "rgba(0,0,0,0.4)", borderRadius: "6px" }}>
+                      <button type="button" onClick={() => { if (!soundcloudAudioRef.current) return; if (scIsPlaying) soundcloudAudioRef.current.pause(); else soundcloudAudioRef.current.play(); }} style={{ width: "28px", height: "28px", borderRadius: "50%", border: "none", background: "rgba(255,255,255,0.1)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", flexShrink: 0 }}>{scIsPlaying ? "⏸" : "▶"}</button>
+                      <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.5)", fontFamily: "monospace", minWidth: "32px" }}>{Math.floor(scCurrentTime / 60)}:{String(Math.floor(scCurrentTime % 60)).padStart(2, "0")}</span>
+                      <div style={{ flex: 1, height: "3px", background: "rgba(255,255,255,0.1)", borderRadius: "2px", cursor: "pointer", position: "relative" }} onClick={(e) => { if (!soundcloudAudioRef.current || !scDuration) return; const rect = e.currentTarget.getBoundingClientRect(); const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)); soundcloudAudioRef.current.currentTime = ratio * scDuration; setScCurrentTime(ratio * scDuration); }}>
+                        <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${scDuration ? (scCurrentTime / scDuration) * 100 : 0}%`, background: "var(--accent)", borderRadius: "2px" }} />
+                      </div>
+                      <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)", fontFamily: "monospace", minWidth: "32px", textAlign: "right" }}>{Math.floor(scDuration / 60)}:{String(Math.floor(scDuration % 60)).padStart(2, "0")}</span>
+                    </div>
+                    <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={async () => {
+                          if (soundcloudMedia) {
+                            await cleanupVideo(soundcloudMedia.video_id);
+                            setSoundcloudMedia(null);
+                            if (soundcloudScriptProcessorRef.current) {
+                              soundcloudScriptProcessorRef.current.disconnect();
+                              soundcloudScriptProcessorRef.current = null;
+                            }
+                            if (soundcloudSourceRef.current) {
+                              soundcloudSourceRef.current.disconnect();
+                              soundcloudSourceRef.current = null;
+                            }
+                            if (soundcloudAudioContextRef.current) {
+                              soundcloudAudioContextRef.current.close();
+                              soundcloudAudioContextRef.current = null;
+                            }
+                          }
+                        }}
+                        style={{ fontSize: "0.75rem" }}
+                      >
+                        Clear track
+                      </button>
+                    </div>
+                    {soundcloudAnalyzing && (
+                      <div style={{ marginTop: "0.5rem", color: "#5ce3a2", fontSize: "0.75rem" }}>
+                        ● Analyzing audio in real-time...
+                      </div>
+                    )}
+                  </div>
+                )}
+                <p className="muted" style={{ fontSize: "0.75rem" }}>
+                  Downloads audio via yt-dlp, plays locally with real-time FLAM analysis.
+                  Album art fills the video area. FLAM scores update as the track plays.
+                </p>
+              </div>
+            </section>
           )}
 
           {/* Microphone Mode */}
