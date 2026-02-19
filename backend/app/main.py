@@ -989,11 +989,9 @@ async def debug_youtube_test(url: str = "https://www.youtube.com/watch?v=jNQXAC9
     }
 
     player_client_strategies = [
-        ["ios", "web"],
         ["android", "web"],
+        ["ios", "web"],
         ["tv", "web"],
-        ["web_creator"],
-        ["mweb"],
     ]
 
     temp_dir = tempfile.mkdtemp(prefix="sonotag_debug_")
@@ -1053,6 +1051,35 @@ async def debug_youtube_test(url: str = "https://www.youtube.com/watch?v=jNQXAC9
         strategy_result["verbose_log_tail"] = verbose_log.messages[-30:]
 
         test_results["strategies"].append(strategy_result)
+
+    # Also test actual download with the best strategy (android+web)
+    download_test = {"strategy": ["android", "web"], "success": False}
+    dl_logger = VerboseLogger()
+    dl_opts = {
+        "format": "bestaudio/best",
+        "outtmpl": os.path.join(temp_dir, "dl_test.%(ext)s"),
+        "verbose": True,
+        "quiet": False,
+        "logger": dl_logger,
+        "socket_timeout": 15,
+        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+    }
+    try:
+        with yt_dlp.YoutubeDL(dl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            download_test["success"] = True
+            download_test["title"] = info.get("title", "Unknown")
+            # Check if file was actually written
+            files = [f for f in os.listdir(temp_dir) if f.startswith("dl_test")]
+            download_test["files_written"] = files
+            if files:
+                fpath = os.path.join(temp_dir, files[0])
+                download_test["file_size_bytes"] = os.path.getsize(fpath)
+    except Exception as e:
+        download_test["error"] = str(e)[:500]
+        download_test["error_type"] = type(e).__name__
+    download_test["verbose_log_tail"] = dl_logger.messages[-15:]
+    test_results["actual_download_test"] = download_test
 
     # Clean up
     shutil.rmtree(temp_dir, ignore_errors=True)
@@ -1169,12 +1196,12 @@ async def analyze_youtube(request: YouTubeAnalysisRequest) -> YouTubeAnalysisRes
         video_duration = 0.0
 
         # Try download with multiple player_client strategies
+        # android+web is first because it's the only one confirmed working on Railway
+        # (see /debug/youtube-test results: SABR streaming blocks ios/web/mweb formats)
         player_client_strategies = [
-            ["ios", "web"],
             ["android", "web"],
+            ["ios", "web"],
             ["tv", "web"],
-            ["web_creator"],
-            ["mweb"],
         ]
         last_error = None
         for strategy in player_client_strategies:
@@ -1407,8 +1434,9 @@ async def prepare_youtube_video(request: PrepareVideoRequest) -> PrepareVideoRes
     logger.debug(f"[prepare-youtube-video] Downloading to {video_dir}")
 
     # Download video with audio using yt-dlp
+    # Relaxed format: android client may return limited formats, so fallback broadly
     ydl_opts = {
-        "format": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]/best",
+        "format": "bestvideo[height<=720]+bestaudio/best[height<=720]/best",
         "merge_output_format": "mp4",
         "outtmpl": os.path.join(video_dir, "video.%(ext)s"),
         "quiet": True,
@@ -1416,12 +1444,12 @@ async def prepare_youtube_video(request: PrepareVideoRequest) -> PrepareVideoRes
     }
 
     # Try download with multiple player_client strategies
+    # android+web is first because it's the only one confirmed working on Railway
+    # (see /debug/youtube-test results: SABR streaming blocks ios/web/mweb formats)
     player_client_strategies = [
-        ["ios", "web"],
         ["android", "web"],
+        ["ios", "web"],
         ["tv", "web"],
-        ["web_creator"],
-        ["mweb"],
     ]
     last_error = None
     for strategy in player_client_strategies:
