@@ -1251,6 +1251,51 @@ youtube_strategy_tracker = StrategyHealthTracker(
 )
 
 
+def build_youtube_failure_detail(last_error: Exception | None) -> dict:
+    """
+    Build a diagnostic, user-facing error when all YouTube strategies fail.
+    Returns a structured dict with actionable info for the frontend to display.
+    """
+    health = youtube_strategy_tracker.get_health_report()
+    error_str = str(last_error).lower() if last_error else ""
+
+    # Classify the failure type
+    if "sign in" in error_str or "bot" in error_str or "confirm" in error_str:
+        failure_type = "bot_detection"
+        user_message = "YouTube is blocking downloads from this server due to bot detection."
+    elif "no video formats" in error_str or "sabr" in error_str:
+        failure_type = "format_unavailable"
+        user_message = (
+            "YouTube changed its streaming protocol and no compatible format was found."
+        )
+    elif "drm" in error_str:
+        failure_type = "drm_protected"
+        user_message = "This video uses DRM protection and cannot be downloaded."
+    elif "private" in error_str or "unavailable" in error_str:
+        failure_type = "video_unavailable"
+        user_message = "This video is private, unavailable, or region-locked."
+    else:
+        failure_type = "unknown"
+        user_message = "YouTube download failed for an unexpected reason."
+
+    healthy = sum(
+        1 for s in health.values() if s.get("consecutive_failures", 0) < 3
+    )
+    total = len(health)
+
+    return {
+        "error": user_message,
+        "failure_type": failure_type,
+        "suggestion": (
+            "Try Vimeo or SoundCloud \u2014 they work reliably from this server."
+            if failure_type in ("bot_detection", "format_unavailable")
+            else "Try a different video URL."
+        ),
+        "strategies_healthy": f"{healthy}/{total}",
+        "technical_detail": str(last_error)[:300] if last_error else None,
+    }
+
+
 async def download_from_url(
     url: str,
     output_dir: str,

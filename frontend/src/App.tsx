@@ -314,6 +314,22 @@ const SC_INSTRUMENTS_PROMPTS = [
   "beatboxing",
 ];
 
+
+const SC_80S_CLASSICS_PROMPTS = [
+  "synthesizer, synth pad",
+  "drum machine, electronic drums",
+  "electric guitar, clean guitar",
+  "bass guitar, synth bass",
+  "keyboards, electric piano",
+  "saxophone, sax solo",
+  "male vocals, male singing",
+  "female vocals, female singing",
+  "choir, backing vocals",
+  "handclap, clap",
+  "reverb, gated reverb",
+  "trumpet, brass section",
+];
+
 // =============================================================================
 // Color Themes
 // =============================================================================
@@ -2131,7 +2147,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               width: videoModalSize.width,
               height: videoModalSize.height,
               zIndex: 500,
-              background: "rgba(15, 20, 30, 0.55)",
+              background: "rgba(15, 20, 30, 0.35)",
               backdropFilter: "blur(12px)",
               WebkitBackdropFilter: "blur(12px)",
               visibility: showVideoModal ? "visible" : "hidden",
@@ -2494,7 +2510,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               width: videoModalSize.width,
               height: videoModalSize.height,
               zIndex: 500,
-              background: "rgba(15, 20, 30, 0.55)",
+              background: "rgba(15, 20, 30, 0.35)",
               backdropFilter: "blur(12px)",
               WebkitBackdropFilter: "blur(12px)",
               visibility: showVideoModal ? "visible" : "hidden",
@@ -2751,7 +2767,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                   width: "100%",
                   flex: 1,
                   objectFit: "cover",
-                  background: "#000",
+                  background: "transparent",
                   display: "block",
                   minHeight: 0,
                 }}
@@ -2955,7 +2971,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               width: webcamModalSize.width,
               height: webcamModalSize.height,
               zIndex: 500,
-              background: "rgba(15, 20, 30, 0.55)",
+              background: "rgba(15, 20, 30, 0.35)",
               backdropFilter: "blur(12px)",
               WebkitBackdropFilter: "blur(12px)",
               visibility: showWebcamModal ? "visible" : "hidden",
@@ -3234,7 +3250,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               width: 280,
               height: labelsModalHeight,
               zIndex: 501,
-              background: "rgba(15, 20, 30, 0.55)",
+              background: "rgba(15, 20, 30, 0.35)",
               backdropFilter: "blur(12px)",
               WebkitBackdropFilter: "blur(12px)",
               borderRadius: "8px",
@@ -4132,7 +4148,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               width: 320,
               height: promptsModalHeight,
               zIndex: 502,
-              background: "rgba(15, 20, 30, 0.55)",
+              background: "rgba(15, 20, 30, 0.35)",
               backdropFilter: "blur(12px)",
               WebkitBackdropFilter: "blur(12px)",
               borderRadius: "8px",
@@ -4229,6 +4245,38 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                   {preset.name}
                 </button>
               ))}
+                {inputMode === "soundcloud" && (
+                  <>
+                    {[
+                      { name: "Techno", prompts: SC_TECHNO_PROMPTS },
+                      { name: "Rock", prompts: SC_ROCK_PROMPTS },
+                      { name: "Jazz", prompts: SC_JAZZ_PROMPTS },
+                      { name: "Classical", prompts: SC_CLASSICAL_PROMPTS },
+                      { name: "Hip-Hop", prompts: SC_HIPHOP_PROMPTS },
+                      { name: "80s", prompts: SC_80S_CLASSICS_PROMPTS },
+                      { name: "Instruments", prompts: SC_INSTRUMENTS_PROMPTS },
+                    ].map((preset) => (
+                      <button
+                        key={preset.name}
+                        type="button"
+                        onClick={() => setPromptsModalInput(preset.prompts.join("; "))}
+                        style={{
+                          padding: "4px 10px",
+                          fontSize: "10px",
+                          background: promptsModalInput === preset.prompts.join("; ") ? "rgba(255, 122, 61, 0.2)" : "rgba(255, 255, 255, 0.05)",
+                          border: "1px solid rgba(255, 255, 255, 0.1)",
+                          borderRadius: "4px",
+                          color: promptsModalInput === preset.prompts.join("; ") ? "var(--accent)" : "var(--muted)",
+                          cursor: "pointer",
+                          transition: "all 0.2s ease",
+                        }}
+                      >
+                        {preset.name}
+                      </button>
+                    ))}
+                  </>
+                )}
+
             </div>
 
             {/* Prompts textarea */}
@@ -4594,6 +4642,18 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                   }}
                 >
                   Hip-Hop
+                </button>
+                <button
+                  type="button"
+                  className={`preset-btn ${prompts === SC_80S_CLASSICS_PROMPTS ? "active" : ""}`}
+                  onClick={() => {
+                    setPrompts(SC_80S_CLASSICS_PROMPTS);
+                    setPromptInput(SC_80S_CLASSICS_PROMPTS.join("; "));
+                    setClassificationScores({});
+                    setMusicDecomposition(false);
+                  }}
+                >
+                  80s
                 </button>
                 <button
                   type="button"
