@@ -10,6 +10,7 @@ import type {
 } from "../types";
 import { ModeTabs } from "./inputs/ModeTabs";
 import { YouTubePanel } from "./inputs/YouTubePanel";
+import { VimeoPanel } from "./inputs/VimeoPanel";
 import { SoundCloudPanel } from "./inputs/SoundCloudPanel";
 import { MicrophonePanel } from "./inputs/MicrophonePanel";
 import { PromptEditor } from "./inputs/PromptEditor";
@@ -52,6 +53,24 @@ export interface ClassicSidebarProps {
   youtubeAnalyzingRef: RefObject<boolean>;
   bufferSecondsRef: RefObject<number>;
   classifyVideoBuffer: (sampleRate: number) => void;
+  // Vimeo
+  vimeoUrl: string;
+  vimeoMedia: PrepareMediaResponse | null;
+  vimeoAnalyzing: boolean;
+  vimeoPreparing: boolean;
+  vimeoError: string;
+  onSetVimeoUrl: (url: string) => void;
+  onSetVimeoMedia: (media: PrepareMediaResponse | null) => void;
+  onSetVimeoPreparing: (preparing: boolean) => void;
+  onSetVimeoError: (error: string) => void;
+  onSetVimeoAnalyzing: (analyzing: boolean) => void;
+  vimeoVideoRef: RefObject<HTMLVideoElement | null>;
+  vimeoAudioContextRef: RefObject<AudioContext | null>;
+  vimeoSourceRef: RefObject<MediaElementAudioSourceNode | null>;
+  vimeoScriptProcessorRef: RefObject<ScriptProcessorNode | null>;
+  vimeoAnalyserRef: RefObject<AnalyserNode | null>;
+  vimeoAnalyzingRef: RefObject<boolean>;
+  classifyVimeoBuffer: (sampleRate: number) => void;
   // SoundCloud
   soundcloudUrl: string;
   soundcloudMedia: PrepareMediaResponse | null;
@@ -137,6 +156,10 @@ export function ClassicSidebar(props: ClassicSidebarProps) {
     videoRef, videoAudioContextRef, videoSourceRef, videoScriptProcessorRef,
     videoAnalyserRef, videoAudioBufferRef, youtubeAnalyzingRef, bufferSecondsRef,
     classifyVideoBuffer,
+    vimeoUrl, vimeoMedia, vimeoAnalyzing, vimeoPreparing, vimeoError,
+    onSetVimeoUrl, onSetVimeoMedia, onSetVimeoPreparing, onSetVimeoError, onSetVimeoAnalyzing,
+    vimeoVideoRef, vimeoAudioContextRef, vimeoSourceRef, vimeoScriptProcessorRef,
+    vimeoAnalyserRef, vimeoAnalyzingRef, classifyVimeoBuffer,
     soundcloudUrl, soundcloudMedia, soundcloudAnalyzing, soundcloudPreparing, soundcloudError,
     onSetSoundcloudUrl, onSetSoundcloudMedia, onSetSoundcloudPreparing, onSetSoundcloudError, onSetSoundcloudAnalyzing,
     soundcloudAudioRef, soundcloudAudioContextRef, soundcloudSourceRef,
@@ -196,6 +219,32 @@ export function ClassicSidebar(props: ClassicSidebarProps) {
           bufferSecondsRef={bufferSecondsRef}
           bufferSeconds={bufferSeconds}
           classifyVideoBuffer={classifyVideoBuffer}
+          modelStatus={modelStatus}
+        />
+      )}
+
+      {inputMode === "vimeo" && (
+        <VimeoPanel
+          vimeoUrl={vimeoUrl}
+          vimeoMedia={vimeoMedia}
+          vimeoAnalyzing={vimeoAnalyzing}
+          vimeoPreparing={vimeoPreparing}
+          vimeoError={vimeoError}
+          onSetVimeoUrl={onSetVimeoUrl}
+          onSetVimeoMedia={onSetVimeoMedia}
+          onSetVimeoPreparing={onSetVimeoPreparing}
+          onSetVimeoError={onSetVimeoError}
+          onSetVimeoAnalyzing={onSetVimeoAnalyzing}
+          videoRef={vimeoVideoRef}
+          videoAudioContextRef={vimeoAudioContextRef}
+          videoSourceRef={vimeoSourceRef}
+          videoScriptProcessorRef={vimeoScriptProcessorRef}
+          videoAnalyserRef={vimeoAnalyserRef}
+          videoAudioBufferRef={videoAudioBufferRef}
+          vimeoAnalyzingRef={vimeoAnalyzingRef}
+          bufferSecondsRef={bufferSecondsRef}
+          bufferSeconds={bufferSeconds}
+          classifyVideoBuffer={classifyVimeoBuffer}
           modelStatus={modelStatus}
         />
       )}

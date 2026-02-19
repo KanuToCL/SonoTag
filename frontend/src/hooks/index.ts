@@ -4,6 +4,7 @@ export { useWebcam } from "./useWebcam";
 export { useBackendInfo } from "./useBackendInfo";
 export { useAudioDevices } from "./useAudioDevices";
 export { useYouTube } from "./useYouTube";
+export { useVimeo } from "./useVimeo";
 export { useSoundCloud } from "./useSoundCloud";
 export { useAudioMonitoring } from "./useAudioMonitoring";
 
@@ -12,5 +13,6 @@ export type { UseWebcamParams, UseWebcamReturn } from "./useWebcam";
 export type { UseBackendInfoParams, UseBackendInfoReturn } from "./useBackendInfo";
 export type { UseAudioDevicesReturn } from "./useAudioDevices";
 export type { UseYouTubeParams, UseYouTubeReturn } from "./useYouTube";
+export type { UseVimeoParams, UseVimeoReturn } from "./useVimeo";
 export type { UseSoundCloudParams, UseSoundCloudReturn } from "./useSoundCloud";
 export type { UseAudioMonitoringParams, UseAudioMonitoringReturn } from "./useAudioMonitoring";

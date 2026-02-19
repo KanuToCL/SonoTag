@@ -1,6 +1,6 @@
 // =============================================================================
 // VideoModal — extracted from App.tsx
-// Handles both YouTube video player and SoundCloud audio player modals.
+// Handles YouTube, Vimeo video player and SoundCloud audio player modals.
 // =============================================================================
 
 import type { RefObject, MouseEvent as ReactMouseEvent } from "react";
@@ -41,6 +41,16 @@ export interface VideoModalProps {
   onVideoPause: () => void;
   onVideoEnded: () => void;
   onVideoError: (e: React.SyntheticEvent<HTMLVideoElement>) => void;
+
+  // Vimeo
+  vimeoMedia: PrepareMediaResponse | null;
+  vimeoAnalyzing: boolean;
+  vimeoVideoRef: RefObject<HTMLVideoElement | null>;
+  onVimeoPlay: () => void;
+  onVimeoPause: () => void;
+  onVimeoEnded: () => void;
+  onVimeoError: (e: React.SyntheticEvent<HTMLVideoElement>) => void;
+  onCloseVimeo: () => void;
 
   // SoundCloud
   soundcloudMedia: PrepareMediaResponse | null;
@@ -106,6 +116,14 @@ export function VideoModal({
   onVideoPause,
   onVideoEnded,
   onVideoError,
+  vimeoMedia,
+  vimeoAnalyzing,
+  vimeoVideoRef,
+  onVimeoPlay,
+  onVimeoPause,
+  onVimeoEnded,
+  onVimeoError,
+  onCloseVimeo,
   soundcloudMedia,
   soundcloudAnalyzing,
   showScModalSearch,
@@ -328,6 +346,127 @@ export function VideoModal({
           onMouseDown={(e) => {
             onResizeStart(e);
           }}
+          style={{
+            position: "absolute",
+            bottom: 0,
+            right: 0,
+            width: "16px",
+            height: "16px",
+            cursor: "nwse-resize",
+            background: "linear-gradient(135deg, transparent 50%, rgba(255,255,255,0.2) 50%)",
+          }}
+        />
+      </div>
+    );
+  }
+
+  // ── Vimeo Video Modal ─────────────────────────────────────────────────
+  if (inputMode === "vimeo" && vimeoMedia) {
+    return (
+      <div
+        className="floating-video-modal"
+        style={{
+          position: "fixed",
+          left: position.x,
+          top: position.y,
+          width: size.width,
+          height: size.height,
+          zIndex: 500,
+          background: "rgba(15, 20, 30, 0.55)",
+          backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
+          visibility: showVideoModal ? "visible" : "hidden",
+          opacity: showVideoModal ? 1 : 0,
+          transition: "opacity 0.2s ease, visibility 0.2s ease",
+          borderRadius: "8px",
+          border: "1px solid rgba(255, 255, 255, 0.08)",
+          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4)",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <div
+          className="modal-drag-handle"
+          onMouseDown={(e) => { onDragStart(e); }}
+          style={{
+            height: "28px",
+            background: "transparent",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "0 10px",
+            cursor: "grab",
+            borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
+            flexShrink: 0,
+          }}
+        >
+          <span style={{ fontSize: "11px", color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+            {vimeoMedia.title}
+          </span>
+          <div style={{ display: "flex", gap: "6px", alignItems: "center", marginLeft: "8px" }}>
+            {vimeoAnalyzing && (
+              <span style={{ fontSize: "9px", color: "var(--success)", display: "flex", alignItems: "center", gap: "4px" }}>
+                <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--success)", animation: "pulse 2s ease infinite" }} />
+                Live
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={onToggleLabels}
+              onMouseDown={(e) => e.stopPropagation()}
+              style={{
+                background: showLabelsModal ? "rgba(255, 255, 255, 0.1)" : "transparent",
+                border: "none",
+                color: showLabelsModal ? "var(--text)" : "var(--muted)",
+                cursor: "pointer",
+                fontSize: "12px",
+                padding: "2px 6px",
+                borderRadius: "4px",
+              }}
+              title="Toggle labels panel"
+            >
+              Labels
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={onCloseVimeo}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--muted)",
+                cursor: "pointer",
+                fontSize: "14px",
+                padding: "2px 4px",
+              }}
+              title="Close"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+
+        <video
+          ref={vimeoVideoRef}
+          src={getVideoStreamUrl(vimeoMedia.video_id)}
+          controls
+          crossOrigin="anonymous"
+          style={{
+            width: "100%",
+            flex: 1,
+            background: "#000",
+            display: "block",
+            minHeight: 0,
+          }}
+          onPlay={onVimeoPlay}
+          onPause={onVimeoPause}
+          onEnded={onVimeoEnded}
+          onError={onVimeoError}
+        />
+
+        <div
+          onMouseDown={(e) => { onResizeStart(e); }}
           style={{
             position: "absolute",
             bottom: 0,

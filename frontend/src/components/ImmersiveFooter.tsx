@@ -31,6 +31,14 @@ export interface ImmersiveFooterProps {
   youtubeError: string;
   onSetYoutubeUrl: (url: string) => void;
   onPrepareYoutube: () => void;
+  // Vimeo state
+  vimeoUrl: string;
+  vimeoMedia: PrepareMediaResponse | null;
+  vimeoAnalyzing: boolean;
+  vimeoPreparing: boolean;
+  vimeoError: string;
+  onSetVimeoUrl: (url: string) => void;
+  onPrepareVimeo: () => void;
   // SoundCloud state
   soundcloudUrl: string;
   soundcloudMedia: PrepareMediaResponse | null;
@@ -74,6 +82,13 @@ export function ImmersiveFooter({
   youtubeError,
   onSetYoutubeUrl,
   onPrepareYoutube,
+  vimeoUrl,
+  vimeoMedia,
+  vimeoAnalyzing,
+  vimeoPreparing,
+  vimeoError,
+  onSetVimeoUrl,
+  onPrepareVimeo,
   soundcloudUrl,
   soundcloudMedia,
   soundcloudAnalyzing,
@@ -108,6 +123,63 @@ export function ImmersiveFooter({
             <span style={{ fontSize: "12px", color: "var(--muted)" }}>Video playing</span>
             {youtubeAnalyzing && (
               <span style={{ fontSize: "11px", color: "var(--success)" }}>● Analyzing</span>
+            )}
+          </div>
+        ) : inputMode === "vimeo" && vimeoMedia ? (
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ fontSize: "12px", color: "var(--muted)" }}>Video playing</span>
+            {vimeoAnalyzing && (
+              <span style={{ fontSize: "11px", color: "var(--success)" }}>● Analyzing</span>
+            )}
+          </div>
+        ) : inputMode === "vimeo" ? (
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1 }}>
+            <input
+              type="text"
+              value={vimeoUrl}
+              onChange={(e) => onSetVimeoUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && vimeoUrl.trim() && !vimeoPreparing) {
+                  onPrepareVimeo();
+                }
+              }}
+              placeholder="Paste Vimeo URL and press Enter..."
+              style={{
+                flex: 1,
+                background: "rgba(0, 0, 0, 0.4)",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+                borderRadius: "6px",
+                padding: "7px 12px",
+                fontSize: "12px",
+                color: "var(--text)",
+                outline: "none",
+                minWidth: 0,
+              }}
+            />
+            <button
+              type="button"
+              disabled={vimeoPreparing || !vimeoUrl.trim()}
+              onClick={() => {
+                if (!vimeoUrl.trim() || vimeoPreparing) return;
+                onPrepareVimeo();
+              }}
+              style={{
+                background: "var(--accent)",
+                border: "none",
+                borderRadius: "6px",
+                padding: "7px 16px",
+                fontSize: "12px",
+                fontWeight: 600,
+                color: "#000",
+                cursor: vimeoPreparing || !vimeoUrl.trim() ? "default" : "pointer",
+                opacity: vimeoPreparing || !vimeoUrl.trim() ? 0.5 : 1,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {vimeoPreparing ? "Loading..." : "Load"}
+            </button>
+            {vimeoError && (
+              <span style={{ fontSize: "11px", color: "#f04040", whiteSpace: "nowrap" }}>{vimeoError}</span>
             )}
           </div>
         ) : inputMode === "soundcloud" && soundcloudMedia ? (

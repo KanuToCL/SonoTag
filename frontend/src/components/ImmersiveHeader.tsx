@@ -4,6 +4,7 @@ export interface ImmersiveHeaderProps {
   inputMode: InputMode;
   status: MonitoringStatus;
   youtubeAnalyzing: boolean;
+  vimeoAnalyzing: boolean;
   soundcloudAnalyzing: boolean;
   settingsOpen: boolean;
   showAboutModal: boolean;
@@ -13,6 +14,7 @@ export interface ImmersiveHeaderProps {
   onClearAll: () => void;
   onStopMonitoring: () => void;
   onStopYoutubeAnalyzing: () => void;
+  onStopVimeoAnalyzing: () => void;
   onStopSoundcloudAnalyzing: () => void;
   onSetBufferSeconds: (seconds: number) => void;
   defaultBufferSeconds: number;
@@ -23,6 +25,7 @@ export function ImmersiveHeader({
   inputMode,
   status,
   youtubeAnalyzing,
+  vimeoAnalyzing,
   soundcloudAnalyzing,
   onSetInputMode,
   onSetSettingsOpen,
@@ -30,6 +33,7 @@ export function ImmersiveHeader({
   onClearAll,
   onStopMonitoring,
   onStopYoutubeAnalyzing,
+  onStopVimeoAnalyzing,
   onStopSoundcloudAnalyzing,
   onSetBufferSeconds,
   defaultBufferSeconds,
@@ -58,12 +62,26 @@ export function ImmersiveHeader({
           </button>
           <button
             type="button"
+            className={`mode-tab ${inputMode === "vimeo" ? "active" : ""}`}
+            onClick={() => {
+              onSetInputMode("vimeo");
+              onSetBufferSeconds(videoBufferSeconds);
+              if (status === "running") onStopMonitoring();
+              onStopYoutubeAnalyzing();
+              onStopSoundcloudAnalyzing();
+            }}
+          >
+            Vimeo
+          </button>
+          <button
+            type="button"
             className={`mode-tab ${inputMode === "soundcloud" ? "active" : ""}`}
             onClick={() => {
               onSetInputMode("soundcloud");
               onSetBufferSeconds(videoBufferSeconds);
               if (status === "running") onStopMonitoring();
               onStopYoutubeAnalyzing();
+              onStopVimeoAnalyzing();
             }}
           >
             SoundCloud
@@ -75,6 +93,7 @@ export function ImmersiveHeader({
               onSetInputMode("microphone");
               onSetBufferSeconds(defaultBufferSeconds);
               onStopYoutubeAnalyzing();
+              onStopVimeoAnalyzing();
               onStopSoundcloudAnalyzing();
             }}
           >
@@ -115,8 +134,8 @@ export function ImmersiveHeader({
 
         {/* Status */}
         <div className="status-indicator">
-          <span className={`status-dot ${(youtubeAnalyzing || soundcloudAnalyzing || status === "running") ? "active" : ""}`} />
-          <span>{youtubeAnalyzing || soundcloudAnalyzing ? "Analyzing" : status === "running" ? "Recording" : "Idle"}</span>
+          <span className={`status-dot ${(youtubeAnalyzing || vimeoAnalyzing || soundcloudAnalyzing || status === "running") ? "active" : ""}`} />
+            <span>{youtubeAnalyzing || vimeoAnalyzing || soundcloudAnalyzing ? "Analyzing" : status === "running" ? "Recording" : "Idle"}</span>
         </div>
       </div>
     </header>

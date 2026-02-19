@@ -26,6 +26,7 @@ export interface UseClassificationParams {
   videoAnalyserRef?: React.MutableRefObject<AnalyserNode | null>;
   soundcloudAnalyserRef?: React.MutableRefObject<AnalyserNode | null>;
   youtubeAnalyzingRef: React.MutableRefObject<boolean>;
+  vimeoAnalyzingRef: React.MutableRefObject<boolean>;
   soundcloudAnalyzingRef: React.MutableRefObject<boolean>;
 }
 
@@ -53,6 +54,7 @@ export interface UseClassificationReturn {
   // Callbacks
   classifyCurrentBuffer: () => Promise<void>;
   classifyVideoBuffer: (sampleRateVideo: number) => Promise<void>;
+  classifyVimeoBuffer: (sampleRate: number) => Promise<void>;
   classifySoundcloudBuffer: (sr: number) => Promise<void>;
   clearStats: () => void;
   // Setters needed by App for external control
@@ -77,6 +79,7 @@ export function useClassification({
   soundcloudAudioBufferRef,
   audioContextRef,
   youtubeAnalyzingRef,
+  vimeoAnalyzingRef,
   soundcloudAnalyzingRef,
 }: UseClassificationParams): UseClassificationReturn {
   // State
@@ -207,6 +210,51 @@ export function useClassification({
     [videoAudioBufferRef, youtubeAnalyzingRef, processResult]
   );
 
+  // classifyVimeoBuffer
+  const classifyVimeoBuffer = useCallback(
+    async (sampleRate: number): Promise<void> => {
+      if (isClassifyingRef.current || videoAudioBufferRef.current.length === 0 || !vimeoAnalyzingRef.current) {
+        if (!vimeoAnalyzingRef.current) {
+          videoAudioBufferRef.current = [];
+        }
+        return;
+      }
+
+      isClassifyingRef.current = true;
+      setIsClassifying(true);
+      const startTime = performance.now();
+
+      try {
+        const totalLength = videoAudioBufferRef.current.reduce((sum, arr) => sum + arr.length, 0);
+        const allSamples = new Float32Array(totalLength);
+        let offset = 0;
+        for (const chunk of videoAudioBufferRef.current) {
+          allSamples.set(chunk, offset);
+          offset += chunk.length;
+        }
+        videoAudioBufferRef.current = [];
+
+        const resampledSamples =
+          sampleRate !== TARGET_SAMPLE_RATE
+            ? resampleAudio(allSamples, sampleRate, TARGET_SAMPLE_RATE)
+            : allSamples;
+
+        const wavBlob = audioSamplesToWavBlob(resampledSamples, TARGET_SAMPLE_RATE);
+        const currentPrompts = promptsRef.current;
+        const result = await classifyAudioLocal(wavBlob, currentPrompts, "unbiased");
+
+        processResult(result, performance.now() - startTime);
+      } catch (err) {
+        console.error("Vimeo classification failed:", err);
+        setClassifyError(err instanceof Error ? err.message : "Classification failed");
+      } finally {
+        isClassifyingRef.current = false;
+        setIsClassifying(false);
+      }
+    },
+    [videoAudioBufferRef, vimeoAnalyzingRef, processResult]
+  );
+
   // classifySoundcloudBuffer
   const classifySoundcloudBuffer = useCallback(
     async (sr: number): Promise<void> => {
@@ -329,6 +377,7 @@ export function useClassification({
     lastClassifyTimeRef,
     classifyCurrentBuffer,
     classifyVideoBuffer,
+    classifyVimeoBuffer,
     classifySoundcloudBuffer,
     clearStats,
     setClassificationScores,

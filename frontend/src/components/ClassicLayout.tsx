@@ -55,6 +55,24 @@ export interface ClassicLayoutProps {
   youtubeAnalyzingRef: RefObject<boolean>;
   bufferSecondsRef: RefObject<number>;
   classifyVideoBuffer: (sampleRate: number) => void;
+  // Vimeo
+  vimeoUrl: string;
+  vimeoMedia: PrepareMediaResponse | null;
+  vimeoAnalyzing: boolean;
+  vimeoPreparing: boolean;
+  vimeoError: string;
+  onSetVimeoUrl: (url: string) => void;
+  onSetVimeoMedia: (media: PrepareMediaResponse | null) => void;
+  onSetVimeoPreparing: (preparing: boolean) => void;
+  onSetVimeoError: (error: string) => void;
+  onSetVimeoAnalyzing: (analyzing: boolean) => void;
+  vimeoVideoRef: RefObject<HTMLVideoElement | null>;
+  vimeoAudioContextRef: RefObject<AudioContext | null>;
+  vimeoSourceRef: RefObject<MediaElementAudioSourceNode | null>;
+  vimeoScriptProcessorRef: RefObject<ScriptProcessorNode | null>;
+  vimeoAnalyserRef: RefObject<AnalyserNode | null>;
+  vimeoAnalyzingRef: RefObject<boolean>;
+  classifyVimeoBuffer: (sampleRate: number) => void;
   // SoundCloud
   soundcloudUrl: string;
   soundcloudMedia: PrepareMediaResponse | null;
@@ -182,6 +200,23 @@ export function ClassicLayout({
   youtubeAnalyzingRef,
   bufferSecondsRef,
   classifyVideoBuffer,
+  vimeoUrl,
+  vimeoMedia,
+  vimeoAnalyzing,
+  vimeoPreparing,
+  vimeoError,
+  onSetVimeoUrl,
+  onSetVimeoMedia,
+  onSetVimeoPreparing,
+  onSetVimeoError,
+  onSetVimeoAnalyzing,
+  vimeoVideoRef,
+  vimeoAudioContextRef,
+  vimeoSourceRef,
+  vimeoScriptProcessorRef,
+  vimeoAnalyserRef,
+  vimeoAnalyzingRef,
+  classifyVimeoBuffer,
   soundcloudUrl,
   soundcloudMedia,
   soundcloudAnalyzing,
@@ -312,6 +347,23 @@ export function ClassicLayout({
           youtubeAnalyzingRef={youtubeAnalyzingRef}
           bufferSecondsRef={bufferSecondsRef}
           classifyVideoBuffer={classifyVideoBuffer}
+          vimeoUrl={vimeoUrl}
+          vimeoMedia={vimeoMedia}
+          vimeoAnalyzing={vimeoAnalyzing}
+          vimeoPreparing={vimeoPreparing}
+          vimeoError={vimeoError}
+          onSetVimeoUrl={onSetVimeoUrl}
+          onSetVimeoMedia={onSetVimeoMedia}
+          onSetVimeoPreparing={onSetVimeoPreparing}
+          onSetVimeoError={onSetVimeoError}
+          onSetVimeoAnalyzing={onSetVimeoAnalyzing}
+          vimeoVideoRef={vimeoVideoRef}
+          vimeoAudioContextRef={vimeoAudioContextRef}
+          vimeoSourceRef={vimeoSourceRef}
+          vimeoScriptProcessorRef={vimeoScriptProcessorRef}
+          vimeoAnalyserRef={vimeoAnalyserRef}
+          vimeoAnalyzingRef={vimeoAnalyzingRef}
+          classifyVimeoBuffer={classifyVimeoBuffer}
           soundcloudUrl={soundcloudUrl}
           soundcloudMedia={soundcloudMedia}
           soundcloudAnalyzing={soundcloudAnalyzing}

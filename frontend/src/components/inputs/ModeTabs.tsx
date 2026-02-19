@@ -91,6 +91,19 @@ export function ModeTabs({
       <button
         type="button"
         onClick={() => {
+          onSetInputMode("vimeo");
+          onSetBufferSeconds(VIDEO_BUFFER_SECONDS);
+          if (status === "running") onStopMonitoring();
+          onSetYoutubeAnalyzing(false);
+          videoAudioBufferRef.current = [];
+        }}
+        style={tabStyle(inputMode === "vimeo")}
+      >
+        Vimeo
+      </button>
+      <button
+        type="button"
+        onClick={() => {
           onSetInputMode("soundcloud");
           onSetBufferSeconds(VIDEO_BUFFER_SECONDS);
           if (status === "running") onStopMonitoring();

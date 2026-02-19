@@ -34,6 +34,7 @@ import {
   useBackendInfo,
   useAudioDevices,
   useYouTube,
+  useVimeo,
   useSoundCloud,
   useAudioMonitoring,
 } from "./hooks";
@@ -143,8 +144,10 @@ function App() {
   const videoAudioBufferRef = useRef<Float32Array[]>([]);
   const soundcloudAudioBufferRef = useRef<Float32Array[]>([]);
   const youtubeAnalyzingRef = useRef<boolean>(false);
+  const vimeoAnalyzingRef = useRef<boolean>(false);
   const soundcloudAnalyzingRef = useRef<boolean>(false);
   const videoAnalyserRef = useRef<AnalyserNode | null>(null);
+  const vimeoAnalyserRef = useRef<AnalyserNode | null>(null);
   const soundcloudAnalyserRef = useRef<AnalyserNode | null>(null);
   const bufferSecondsRef = useRef<number>(DEFAULT_BUFFER_SECONDS);
   const audioContextRefForClassification = useRef<AudioContext | null>(null);
@@ -226,6 +229,7 @@ function App() {
     lastClassifyTimeRef,
     classifyCurrentBuffer,
     classifyVideoBuffer,
+    classifyVimeoBuffer,
     classifySoundcloudBuffer,
     clearStats,
     setClassificationScores,
@@ -245,6 +249,7 @@ function App() {
     videoAnalyserRef,
     soundcloudAnalyserRef,
     youtubeAnalyzingRef,
+    vimeoAnalyzingRef,
     soundcloudAnalyzingRef,
   });
 
@@ -274,6 +279,35 @@ function App() {
     videoAudioBufferRef,
     youtubeAnalyzingRef,
     videoAnalyserRef,
+    bufferSecondsRef,
+  });
+
+  // Vimeo
+  const {
+    vimeoUrl,
+    vimeoPreparing,
+    vimeoMedia,
+    vimeoError,
+    vimeoAnalyzing,
+    vimeoVideoRef,
+    vimeoAudioContextRef,
+    vimeoSourceRef,
+    vimeoScriptProcessorRef,
+    setVimeoUrl,
+    setVimeoPreparing,
+    setVimeoMedia,
+    setVimeoError,
+    setVimeoAnalyzing,
+    loadVimeoVideo,
+    stopVimeoAnalysis,
+    startVimeoAnalysis,
+    cleanupVimeoAudio,
+  } = useVimeo({
+    classifyVideoBuffer: classifyVimeoBuffer,
+    bufferSeconds,
+    videoAudioBufferRef,
+    vimeoAnalyzingRef,
+    vimeoAnalyserRef,
     bufferSecondsRef,
   });
 
@@ -408,7 +442,7 @@ function App() {
   // Video/SoundCloud Heatmap Draw Loop
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    if ((!youtubeAnalyzing && !soundcloudAnalyzing) || !heatmapRef.current || !spectrogramRef.current) return;
+    if ((!youtubeAnalyzing && !vimeoAnalyzing && !soundcloudAnalyzing) || !heatmapRef.current || !spectrogramRef.current) return;
 
     const heatmapCanvas = heatmapRef.current;
     const heatmapContext = heatmapCanvas.getContext("2d");
@@ -436,7 +470,7 @@ function App() {
 
       const hasScores = Object.keys(classificationScoresRef.current).length > 0;
 
-      const analyser = videoAnalyserRef.current || soundcloudAnalyserRef.current;
+      const analyser = videoAnalyserRef.current || vimeoAnalyserRef.current || soundcloudAnalyserRef.current;
       if (shouldDraw && analyser) {
         const bufLen = analyser.frequencyBinCount;
         const snap = new Uint8Array(bufLen);
@@ -502,7 +536,7 @@ function App() {
     return () => {
       if (animationId) cancelAnimationFrame(animationId);
     };
-  }, [youtubeAnalyzing, soundcloudAnalyzing, slideSpeed, freqRange.min, freqRange.max, nyquist, layoutMode,
+  }, [youtubeAnalyzing, vimeoAnalyzing, soundcloudAnalyzing, slideSpeed, freqRange.min, freqRange.max, nyquist, layoutMode,
       classificationScoresRef, promptsRef, normalizeScoresRef, heatmapRef, spectrogramRef]);
 
   // ---------------------------------------------------------------------------
@@ -576,6 +610,7 @@ function App() {
           inputMode={inputMode}
           status={status}
           youtubeAnalyzing={youtubeAnalyzing}
+          vimeoAnalyzing={vimeoAnalyzing}
           soundcloudAnalyzing={soundcloudAnalyzing}
           settingsOpen={settingsOpen}
           showAboutModal={showAboutModal}
@@ -585,6 +620,7 @@ function App() {
           onClearAll={onClearAll}
           onStopMonitoring={stopMonitoring}
           onStopYoutubeAnalyzing={stopYouTubeAnalysis}
+          onStopVimeoAnalyzing={stopVimeoAnalysis}
           onStopSoundcloudAnalyzing={stopSoundCloudAnalysis}
           onSetBufferSeconds={setBufferSeconds}
           defaultBufferSeconds={DEFAULT_BUFFER_SECONDS}
@@ -723,6 +759,28 @@ function App() {
                   </button>
                 )}
 
+                {inputMode === "vimeo" && vimeoMedia && (
+                  <button
+                    type="button"
+                    onClick={() => setShowVideoModal(!showVideoModal)}
+                    style={{
+                      padding: "8px 16px",
+                      fontSize: "13px",
+                      fontWeight: 500,
+                      color: showVideoModal ? "var(--accent)" : "var(--muted)",
+                      background: showVideoModal ? "rgba(255, 122, 61, 0.2)" : "rgba(15, 21, 32, 0.8)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "8px",
+                      cursor: "pointer",
+                      transition: "all 0.2s ease",
+                      width: "100%",
+                    }}
+                    title={showVideoModal ? "Hide Video" : "Show Video"}
+                  >
+                    Video
+                  </button>
+                )}
+
                 {inputMode === "soundcloud" && soundcloudMedia && (
                   <button
                     type="button"
@@ -834,6 +892,24 @@ function App() {
             const err = vid.error;
             if (DEBUG_YT) console.error('[YT] Video error:', err?.code, err?.message, 'src:', vid.src);
             setYoutubeError(`Video playback error: ${err?.message || 'unknown'} (code ${err?.code})`);
+          }}
+          vimeoMedia={vimeoMedia}
+          vimeoAnalyzing={vimeoAnalyzing}
+          vimeoVideoRef={vimeoVideoRef}
+          onVimeoPlay={startVimeoAnalysis}
+          onVimeoPause={stopVimeoAnalysis}
+          onVimeoEnded={stopVimeoAnalysis}
+          onVimeoError={(e) => {
+            const vid = e.currentTarget as HTMLVideoElement;
+            const err = vid.error;
+            if (DEBUG_YT) console.error('[Vimeo] Video error:', err?.code, err?.message, 'src:', vid.src);
+            setVimeoError(`Video playback error: ${err?.message || 'unknown'} (code ${err?.code})`);
+          }}
+          onCloseVimeo={() => {
+            stopVimeoAnalysis();
+            cleanupVimeoAudio();
+            if (vimeoMedia) cleanupVideo(vimeoMedia.video_id).catch(() => {});
+            setVimeoMedia(null);
           }}
           soundcloudMedia={soundcloudMedia}
           soundcloudAnalyzing={soundcloudAnalyzing}
@@ -1005,6 +1081,16 @@ function App() {
             if (!youtubeUrl.trim() || youtubePreparing) return;
             await loadYouTubeVideo(youtubeUrl);
           }}
+          vimeoUrl={vimeoUrl}
+          vimeoMedia={vimeoMedia}
+          vimeoAnalyzing={vimeoAnalyzing}
+          vimeoPreparing={vimeoPreparing}
+          vimeoError={vimeoError}
+          onSetVimeoUrl={setVimeoUrl}
+          onPrepareVimeo={async () => {
+            if (!vimeoUrl.trim() || vimeoPreparing) return;
+            await loadVimeoVideo(vimeoUrl);
+          }}
           soundcloudUrl={soundcloudUrl}
           soundcloudMedia={soundcloudMedia}
           soundcloudAnalyzing={soundcloudAnalyzing}
@@ -1112,6 +1198,23 @@ function App() {
       youtubeAnalyzingRef={youtubeAnalyzingRef}
       bufferSecondsRef={bufferSecondsRef}
       classifyVideoBuffer={classifyVideoBuffer}
+      vimeoUrl={vimeoUrl}
+      vimeoMedia={vimeoMedia}
+      vimeoAnalyzing={vimeoAnalyzing}
+      vimeoPreparing={vimeoPreparing}
+      vimeoError={vimeoError}
+      onSetVimeoUrl={setVimeoUrl}
+      onSetVimeoMedia={setVimeoMedia}
+      onSetVimeoPreparing={setVimeoPreparing}
+      onSetVimeoError={setVimeoError}
+      onSetVimeoAnalyzing={setVimeoAnalyzing}
+      vimeoVideoRef={vimeoVideoRef}
+      vimeoAudioContextRef={vimeoAudioContextRef}
+      vimeoSourceRef={vimeoSourceRef}
+      vimeoScriptProcessorRef={vimeoScriptProcessorRef}
+      vimeoAnalyserRef={vimeoAnalyserRef}
+      vimeoAnalyzingRef={vimeoAnalyzingRef}
+      classifyVimeoBuffer={classifyVideoBuffer}
       soundcloudUrl={soundcloudUrl}
       soundcloudMedia={soundcloudMedia}
       soundcloudAnalyzing={soundcloudAnalyzing}

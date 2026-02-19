@@ -1,5 +1,7 @@
 export { YouTubePanel } from "./YouTubePanel";
 export type { YouTubePanelProps } from "./YouTubePanel";
+export { VimeoPanel } from "./VimeoPanel";
+export type { VimeoPanelProps } from "./VimeoPanel";
 export { SoundCloudPanel } from "./SoundCloudPanel";
 export type { SoundCloudPanelProps } from "./SoundCloudPanel";
 export { MicrophonePanel } from "./MicrophonePanel";
