@@ -49,6 +49,7 @@ const ENABLE_CLASSIC_VIEW = false; // Set to true to re-enable the Classic View 
 
 // Buffer size for audio capture
 const DEFAULT_BUFFER_SECONDS = 5;
+const VIDEO_BUFFER_SECONDS = 2; // Shorter buffer for YouTube/SoundCloud (less lag from video)
 const MIN_BUFFER_SECONDS = 1;
 const MAX_BUFFER_SECONDS = 10;
 // Target sample rate for FLAM
@@ -1798,6 +1799,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                 className={`mode-tab ${inputMode === "youtube" ? "active" : ""}`}
                 onClick={() => {
                   setInputMode("youtube");
+                  setBufferSeconds(VIDEO_BUFFER_SECONDS);
                   if (status === "running") stopMonitoring();
                   setSoundcloudAnalyzing(false);
                   soundcloudAudioBufferRef.current = [];
@@ -1810,6 +1812,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                 className={`mode-tab ${inputMode === "soundcloud" ? "active" : ""}`}
                 onClick={() => {
                   setInputMode("soundcloud");
+                  setBufferSeconds(VIDEO_BUFFER_SECONDS);
                   if (status === "running") stopMonitoring();
                   setYoutubeAnalyzing(false);
                   videoAudioBufferRef.current = [];
@@ -1822,6 +1825,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                 className={`mode-tab ${inputMode === "microphone" ? "active" : ""}`}
                 onClick={() => {
                   setInputMode("microphone");
+                  setBufferSeconds(DEFAULT_BUFFER_SECONDS);
                   setYoutubeAnalyzing(false);
                   videoAudioBufferRef.current = [];
                   setSoundcloudAnalyzing(false);
@@ -4971,6 +4975,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               type="button"
               onClick={() => {
                 setInputMode("youtube");
+                setBufferSeconds(VIDEO_BUFFER_SECONDS);
                 // Stop mic if running
                 if (status === "running") {
                   stopMonitoring();
@@ -4994,6 +4999,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               type="button"
               onClick={() => {
                 setInputMode("soundcloud");
+                setBufferSeconds(VIDEO_BUFFER_SECONDS);
                 if (status === "running") {
                   stopMonitoring();
                 }
@@ -5018,6 +5024,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               type="button"
               onClick={() => {
                 setInputMode("microphone");
+                setBufferSeconds(DEFAULT_BUFFER_SECONDS);
                 // Stop YouTube analysis and cleanup
                 setYoutubeAnalyzing(false);
                 videoAudioBufferRef.current = [];
