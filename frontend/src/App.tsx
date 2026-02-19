@@ -48,7 +48,7 @@ const DEBUG_YT = false;
 const ENABLE_CLASSIC_VIEW = false; // Set to true to re-enable the Classic View layout
 
 // Buffer size for audio capture
-const DEFAULT_BUFFER_SECONDS = 5;
+const DEFAULT_BUFFER_SECONDS = 2;
 const VIDEO_BUFFER_SECONDS = 2; // Shorter buffer for YouTube/SoundCloud (less lag from video)
 const MIN_BUFFER_SECONDS = 1;
 const MAX_BUFFER_SECONDS = 10;
