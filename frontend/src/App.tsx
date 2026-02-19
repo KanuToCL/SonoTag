@@ -1600,51 +1600,7 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
           </div>
         </header>
 
-        {/* YouTube API Warning Banner */}
-        {inputMode === "youtube" && !youtubeVideo && (
-          <div style={{
-            position: "fixed",
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-            zIndex: 600,
-            background: "rgba(20, 16, 8, 0.85)",
-            backdropFilter: "blur(16px)",
-            WebkitBackdropFilter: "blur(16px)",
-            border: "1px solid rgba(240, 160, 48, 0.3)",
-            borderRadius: "12px",
-            padding: "28px 36px",
-            maxWidth: "420px",
-            textAlign: "center",
-            boxShadow: "0 12px 40px rgba(0, 0, 0, 0.5)",
-          }}>
-            <div style={{ fontSize: "28px", marginBottom: "12px" }}>⚠️</div>
-            <div style={{ fontSize: "15px", fontWeight: 600, color: "#f0a030", marginBottom: "10px" }}>
-              YouTube Playback Temporarily Unavailable
-            </div>
-            <div style={{ fontSize: "13px", color: "rgba(255,255,255,0.7)", lineHeight: 1.6 }}>
-              We&apos;re working on some known YouTube API issues.
-              Sound device classification is fully working on the <strong style={{ color: "var(--accent)" }}>Microphone</strong> tab.
-            </div>
-            <button
-              type="button"
-              onClick={() => setInputMode("microphone")}
-              style={{
-                marginTop: "18px",
-                padding: "10px 24px",
-                fontSize: "13px",
-                fontWeight: 600,
-                background: "var(--accent)",
-                color: "#000",
-                border: "none",
-                borderRadius: "8px",
-                cursor: "pointer",
-              }}
-            >
-              Switch to Microphone
-            </button>
-          </div>
-        )}
+        {/* YouTube mode - no warning, fully functional locally */}
 
         {/* Main Visualization Area */}
         <main className="immersive-main">
@@ -3616,8 +3572,72 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
                 )}
               </div>
             ) : inputMode === "youtube" ? (
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span style={{ fontSize: "12px", color: "#f0a030", fontStyle: "italic" }}>⚠ YouTube loading temporarily unavailable</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1 }}>
+                <input
+                  type="text"
+                  value={youtubeUrl}
+                  onChange={(e) => setYoutubeUrl(e.target.value)}
+                  onKeyDown={async (e) => {
+                    if (e.key === "Enter" && youtubeUrl.trim() && !youtubePreparing) {
+                      setYoutubePreparing(true);
+                      setYoutubeError("");
+                      try {
+                        const result = await prepareYouTubeVideo(youtubeUrl);
+                        setYoutubeVideo(result);
+                      } catch (err) {
+                        setYoutubeError(err instanceof Error ? err.message : "Failed to prepare video");
+                      } finally {
+                        setYoutubePreparing(false);
+                      }
+                    }
+                  }}
+                  placeholder="Paste YouTube URL and press Enter..."
+                  style={{
+                    flex: 1,
+                    background: "rgba(0, 0, 0, 0.4)",
+                    border: "1px solid rgba(255, 255, 255, 0.1)",
+                    borderRadius: "6px",
+                    padding: "7px 12px",
+                    fontSize: "12px",
+                    color: "var(--text)",
+                    outline: "none",
+                    minWidth: 0,
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={youtubePreparing || !youtubeUrl.trim()}
+                  onClick={async () => {
+                    if (!youtubeUrl.trim() || youtubePreparing) return;
+                    setYoutubePreparing(true);
+                    setYoutubeError("");
+                    try {
+                      const result = await prepareYouTubeVideo(youtubeUrl);
+                      setYoutubeVideo(result);
+                    } catch (err) {
+                      setYoutubeError(err instanceof Error ? err.message : "Failed to prepare video");
+                    } finally {
+                      setYoutubePreparing(false);
+                    }
+                  }}
+                  style={{
+                    background: "var(--accent)",
+                    border: "none",
+                    borderRadius: "6px",
+                    padding: "7px 16px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    color: "#000",
+                    cursor: youtubePreparing || !youtubeUrl.trim() ? "default" : "pointer",
+                    opacity: youtubePreparing || !youtubeUrl.trim() ? 0.5 : 1,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {youtubePreparing ? "Loading..." : "Load"}
+                </button>
+                {youtubeError && (
+                  <span style={{ fontSize: "11px", color: "#f04040", whiteSpace: "nowrap" }}>{youtubeError}</span>
+                )}
               </div>
             ) : (
               <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
@@ -4325,40 +4345,6 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
           {inputMode === "youtube" && (
             <section className="block">
               <h2>YouTube Live Analysis</h2>
-              <div style={{
-                padding: "16px",
-                background: "rgba(240, 160, 48, 0.1)",
-                border: "1px solid rgba(240, 160, 48, 0.3)",
-                borderRadius: "8px",
-                marginBottom: "1rem",
-                textAlign: "center",
-              }}>
-                <div style={{ fontSize: "20px", marginBottom: "8px" }}>⚠️</div>
-                <div style={{ fontSize: "13px", fontWeight: 600, color: "#f0a030", marginBottom: "6px" }}>
-                  YouTube Playback Temporarily Unavailable
-                </div>
-                <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.65)", lineHeight: 1.5 }}>
-                  We&apos;re working on some known YouTube API issues.
-                  Sound device classification is fully working on the <strong style={{ color: "#ff7a3d" }}>Microphone</strong> tab.
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setInputMode("microphone")}
-                  style={{
-                    marginTop: "12px",
-                    padding: "8px 20px",
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    background: "#ff7a3d",
-                    color: "#000",
-                    border: "none",
-                    borderRadius: "6px",
-                    cursor: "pointer",
-                  }}
-                >
-                  Switch to Microphone
-                </button>
-              </div>
             <div className="stack">
               <label className="label" htmlFor="youtube-url">
                 YouTube video URL

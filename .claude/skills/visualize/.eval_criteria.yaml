@@ -1,0 +1,550 @@
+# Visualize Skill Evaluation Criteria
+# Generated: 2026-02-08, Refined: 2026-02-10
+# Purpose: Validate that the visualize skill adheres to established best practices
+#   from archetype references while maintaining creative diversity (per D92634200).
+# Coverage: Key archetypes with archetype-specific quality checks + edge/negative/pressure
+#   + real-world MCP integration tests using actual Meta artifacts (diffs, SEVs, posts).
+# Total: 20 test cases (18 original + 2 new real-world MCP tests; 2 existing updated with real data)
+
+# ============================================================
+# HAPPY PATH — Archetype-specific best practice validation
+# ============================================================
+
+- id: TC-001
+  name: "Session Summary — timeline, decisions, action items"
+  category: happy_path
+  prompt: "/visualize summarize this work session: Investigated a P0 bug where OAuth tokens were expiring prematurely. Root cause was a timezone mismatch in the token expiry calculation — server used UTC but client compared against local time. Fixed by normalizing both to UTC in the token validator. Wrote 4 unit tests covering edge cases (DST transition, leap second, negative offset, max expiry). All tests passing. Deployed fix to canary, monitoring shows 0 auth failures in past hour. Decision: will add a global timezone lint rule to prevent recurrence. Action item: @alexahn create lint rule by EOW. Action item: @sre-oncall monitor canary for 24h."
+  description: "Tests Session Summary archetype — must use timeline structure, highlight decisions visually, collect action items with owners"
+  expected_behavior: "Creates HTML with chronological timeline, visually distinct decision callouts, and action items checklist with owners"
+  eval_target: artifact
+  quality_criteria:
+    required_present: ["html", "OAuth", "UTC", "timeline", "decision", "action"]
+    required_absent: ["I cannot", "undefined", "traceback"]
+    semantic_checks:
+      - question: "Does the HTML use a vertical timeline or chronological structure with timestamps to organize the session events?"
+        weight: 3
+      - question: "Are decisions rendered as visually distinct callout blocks (bordered, colored, or highlighted) that break the timeline rhythm and demand attention — NOT buried in paragraph text?"
+        weight: 3
+      - question: "Is there an action items section at the bottom with checkboxes, owner names (@alexahn, @sre-oncall), and deadlines?"
+        weight: 3
+      - question: "Does the page have a compact header with session metadata (title, date) followed immediately by 2-3 key outcome bullets?"
+        weight: 2
+      - question: "Does the HTML include dark mode toggle and print button?"
+        weight: 1
+    artifact_checks:
+      - path: "~/visualize/**/*.html"
+        content_contains: ["<html", "OAuth", "UTC", "alexahn"]
+  timeout_seconds: 600
+  max_budget_usd: 5.0
+
+- id: TC-002
+  name: "Dashboard — KPI cards, status colors, trend indicators"
+  category: happy_path
+  prompt: "/visualize a dashboard showing these service health metrics: API Gateway latency P50 12ms P99 89ms (target <100ms), Error rate 0.03% (target <0.1%), Request volume 45K QPS (+8% WoW), Cache hit rate 94.2% (-1.3% WoW), DB connection pool 67/100 used, Deployment status: canary healthy v2.4.1, 3 active alerts (2 warning, 1 info)"
+  description: "Tests Dashboard archetype — must have KPI metric cards with trends, status colors used semantically, last-updated timestamp"
+  expected_behavior: "Creates HTML dashboard with header+status badge, 4-6 KPI cards with trend arrows, status colors (green/yellow/red), and alerts section"
+  eval_target: artifact
+  quality_criteria:
+    required_present: ["html", "dashboard", "12ms", "89ms", "0.03%"]
+    required_absent: ["error", "undefined", "traceback"]
+    semantic_checks:
+      - question: "Does the dashboard have a header bar with title, a 'last updated' timestamp, and an overall status badge giving instant health read?"
+        weight: 3
+      - question: "Are there 4-6 KPI metric cards in a row at the top, each showing the metric value with a trend indicator (up/down arrow, sparkline, or delta value)?"
+        weight: 3
+      - question: "Are status colors (green, yellow, red) used consistently and semantically — green for healthy metrics meeting target, yellow/red for those approaching or exceeding thresholds — NOT decoratively?"
+        weight: 3
+      - question: "Is there at least one chart showing a trend over time (line chart, sparkline, or bar chart) with clear axis labels?"
+        weight: 2
+      - question: "Is the visual hierarchy correct: KPIs at top, then trends/charts, then details, then alerts at bottom?"
+        weight: 2
+      - question: "Are there NO more than 6-8 top-level KPIs displayed? (Too many dilutes attention)"
+        weight: 1
+    artifact_checks:
+      - path: "~/visualize/**/*.html"
+        content_contains: ["<html", "12ms", "0.03%"]
+  timeout_seconds: 600
+  max_budget_usd: 5.0
+
+- id: TC-003
+  name: "Presentation Deck — fullscreen slides, keyboard nav, no scrolling"
+  category: happy_path
+  prompt: "/visualize a presentation on why we should adopt TypeScript for our frontend codebase. Slide 1: Title - TypeScript Migration Proposal. Slide 2: The Problem - 47% of production bugs are type-related. Slide 3: The Solution - TypeScript catches 38% of bugs at compile time (study by Airbnb). Slide 4: Migration plan - 3 phases over 6 months. Slide 5: Cost - 2 eng-weeks per phase. Slide 6: Call to action - approve Phase 1 starting next sprint."
+  description: "Tests Presentation Deck archetype — STRICT layout requirements: fullscreen slides, no scrolling, keyboard nav, no text walls"
+  expected_behavior: "Creates HTML with fullscreen slides (100vw x 100vh), arrow navigation, keyboard support, slide counter, progress bar, no scrolling"
+  eval_target: artifact
+  quality_criteria:
+    required_present: ["html", "100vh", "slide", "TypeScript"]
+    required_absent: ["error", "undefined", "traceback"]
+    semantic_checks:
+      - question: "Does each slide occupy exactly the full viewport (100vh) with NO scrolling (overflow: hidden)? This is a strict requirement — any scrollable content is a failure."
+        weight: 3
+      - question: "Is there keyboard navigation using ArrowLeft/ArrowRight keys AND visible on-screen arrow buttons?"
+        weight: 3
+      - question: "Does the deck include a slide counter showing current position (e.g., '3 / 6') and a progress bar?"
+        weight: 2
+      - question: "Does the last slide end with a call to action ('approve Phase 1') — NOT a generic 'Questions?' slide?"
+        weight: 2
+      - question: "Is text kept minimal on each slide (no walls of text, no paragraphs)? Each slide should have ONE dominant visual element."
+        weight: 2
+      - question: "Are all 6 slides present with content matching the specified topics?"
+        weight: 2
+      - question: "Is there a print/download button that renders slides as separate pages?"
+        weight: 1
+    artifact_checks:
+      - path: "~/visualize/**/*.html"
+        content_contains: ["<html", "100vh", "TypeScript", "goSlide"]
+  timeout_seconds: 600
+  max_budget_usd: 5.0
+
+- id: TC-004
+  name: "Experiment Report — verdict-first, SS badges, colored containers"
+  category: happy_path
+  prompt: "/visualize an experiment report: A/B test 'redesigned_checkout_v2', ran 2 weeks on iOS. Control: 100K users, conversion rate 3.2%, revenue/user $12.50, bounce rate 45%. Treatment: 100K users, conversion rate 4.1% (+28% lift, p=0.003 SS), revenue/user $14.20 (+13.6%, p=0.01 SS), bounce rate 38% (-15.6%, p=0.008 SS). Root cause of lift: simplified 3-step checkout replaced 5-step flow. Recommendation: ship treatment to 100%."
+  description: "Tests Experiment Report archetype — STRICT requirements: verdict first, dark text on colored containers, SS badges, confidence intervals, saturation scaling"
+  expected_behavior: "Creates HTML with verdict banner at top, metrics with SS/NSS badges, dark text with colored container backgrounds (NOT colored text), and hypothesis section"
+  eval_target: artifact
+  quality_criteria:
+    required_present: ["html", "experiment", "3.2%", "4.1%", "0.003"]
+    required_absent: ["error", "I cannot", "traceback"]
+    semantic_checks:
+      - question: "Does the page lead with a verdict/conclusion banner (SHIP/NO SHIP/MIXED) in the FIRST visible section, with severity-appropriate coloring? The verdict must be visible within 3 seconds of page load — NOT buried at the bottom."
+        weight: 3
+      - question: "Are metric values displayed in DARK text (near-black) with color on the CONTAINER (background tints, borders, badges) — NOT colored text for numbers? This is a strict anti-pattern: colored numbers are hard to read."
+        weight: 3
+      - question: "Does color saturation scale with magnitude? A +28% lift should have a MORE saturated green background than a +13.6% lift."
+        weight: 2
+      - question: "Are there SS (statistically significant) and/or NSS badges next to every reported metric? Every number needs a significance indicator."
+        weight: 3
+      - question: "Is the hypothesis clearly stated as 'We expected X because Y' or similar causal framing?"
+        weight: 2
+      - question: "Are p-values shown alongside the delta values for every metric?"
+        weight: 2
+      - question: "Is there at least one chart (bar chart for comparison, or line chart for trend)?"
+        weight: 2
+      - question: "Is there a specific recommendation section with actionable next steps (ship to 100%, iterate, kill)?"
+        weight: 2
+    artifact_checks:
+      - path: "~/visualize/**/*.html"
+        content_contains: ["<html", "3.2%", "4.1%", "0.003"]
+  timeout_seconds: 600
+  max_budget_usd: 5.0
+
+- id: TC-005
+  name: "Comparison Matrix — scoring table, winner badge, balanced"
+  category: happy_path
+  prompt: "/visualize compare three state management solutions for our React app: Redux (mature, verbose, large ecosystem, 18KB, steep learning curve), Zustand (simple, small, TS-first, 1KB, minimal boilerplate), and Jotai (atomic, composable, 3KB, React-native friendly, newer community). Criteria: bundle size, learning curve, TypeScript support, devtools, community size, performance. Recommend one."
+  description: "Tests Comparison Matrix archetype — structured comparison with visual scoring and clear recommendation"
+  expected_behavior: "Creates HTML with comparison table or cards, visual scoring, winner highlight, and balanced presentation of trade-offs"
+  eval_target: artifact
+  quality_criteria:
+    required_present: ["html", "Redux", "Zustand", "Jotai"]
+    required_absent: ["error", "I cannot"]
+    semantic_checks:
+      - question: "Does the HTML include a structured comparison showing all three options against ALL six specified criteria (bundle size, learning curve, TypeScript support, devtools, community size, performance)?"
+        weight: 3
+      - question: "Are the ratings/scores visual (dots, stars, colored progress bars, or numeric scales) rather than just prose descriptions?"
+        weight: 2
+      - question: "Is there a clear winner/recommendation with a visual indicator (badge, highlight border, or prominent callout)?"
+        weight: 2
+      - question: "Is the presentation balanced, showing BOTH strengths AND weaknesses for each option — not just promoting the winner?"
+        weight: 2
+    artifact_checks:
+      - path: "~/visualize/**/*.html"
+        content_contains: ["<html", "Redux", "Zustand", "Jotai"]
+  timeout_seconds: 600
+  max_budget_usd: 5.0
+
+- id: TC-006
+  name: "Visual/Diagram — colored boxes, connectors, legend"
+  category: happy_path
+  prompt: "/visualize a system architecture diagram for our ad serving pipeline: User Request enters Load Balancer, routes to Ad Server (Go), which queries Ad Ranking Service (Python/ML) and Creative Store (Redis). Ad Ranking calls Feature Store (Scuba) and ML Model Server (PyTorch). Response flows back through Ad Server which assembles the creative and returns to user. Monitoring via Scuba and ODS at every hop."
+  description: "Tests Visual/Diagram archetype — colored boxes, connectors, legend, fits on one screen"
+  expected_behavior: "Creates HTML with structural diagram using colored boxes for components, arrows for data flow, and a legend"
+  eval_target: artifact
+  quality_criteria:
+    required_present: ["html", "Ad Server", "Load Balancer"]
+    required_absent: ["error", "I cannot"]
+    semantic_checks:
+      - question: "Does the HTML render a structural diagram with colored boxes or containers for each system component (Load Balancer, Ad Server, Ad Ranking, etc.)?"
+        weight: 3
+      - question: "Are there visual connectors (arrows, lines, or SVG paths) showing the data flow direction from User Request through the pipeline?"
+        weight: 3
+      - question: "Is there a legend explaining what each color or category represents?"
+        weight: 2
+      - question: "Does the diagram fit on one screen without requiring horizontal or vertical scrolling?"
+        weight: 1
+    artifact_checks:
+      - path: "~/visualize/**/*.html"
+        content_contains: ["<html", "Ad Server", "Load Balancer"]
+  timeout_seconds: 600
+  max_budget_usd: 5.0
+
+- id: TC-007
+  name: "SEV Review (real) — S608506 DSS-4 Claude CLI incident"
+  category: happy_path
+  prompt: "/visualize SEV S608506"
+  description: "Tests SEV Review archetype with a REAL SEV fetched via MCP tool. S608506 is a SEV 3 about employees using non-DSS4-approved Claude CLI to write PSCs. Tests: MCP content fetching, severity-appropriate theming (SEV 3 = blue/teal, not red), timeline extraction from real data, DERP section synthesis, follow-up task rendering."
+  expected_behavior: "Fetches SEV data via knowledge_load MCP tool, creates HTML with blue/teal header (SEV 3), visual timeline with level changes and mitigation, DERP sections synthesized from real remediation/detection/prevention fields, follow-up task T253697828"
+  eval_target: artifact
+  quality_criteria:
+    required_present: ["html", "608506", "SEV", "DSS"]
+    required_absent: ["error", "I cannot", "traceback"]
+    semantic_checks:
+      - question: "Did the skill fetch SEV data via an MCP tool (knowledge_load or similar) rather than asking the user to paste the content?"
+        weight: 3
+      - question: "Does the header use severity-appropriate coloring for SEV 3 (blue, teal, or similar — NOT red which would be SEV 1, NOT amber which would be SEV 2)?"
+        weight: 2
+      - question: "Is there a visual timeline showing the incident progression including the severity level changes (3→4→3) and mitigation event?"
+        weight: 3
+      - question: "Are DERP sections (Detection, Escalation, Remediation, Prevention) present with content synthesized from the real SEV fields — detection via workplace post reports, remediation via Performance FYI post and ACLs, prevention via governance improvements?"
+        weight: 2
+      - question: "Does it include the follow-up task T253697828 ('Get Claude CLI approved for DSS-4') with owner and priority?"
+        weight: 2
+      - question: "Is the root cause clearly stated — employees didn't know Claude CLI is DSS-3 approved only, while PSC self-reviews are DSS-4 data?"
+        weight: 2
+      - question: "Does it mention the real impact — multiple viral workplace posts driving employees to use Claude for PSCs?"
+        weight: 1
+    artifact_checks:
+      - path: "~/visualize/**/*.html"
+        content_contains: ["<html", "608506", "DSS"]
+  timeout_seconds: 900
+  max_budget_usd: 7.0
+
+- id: TC-008
+  name: "Project Roadmap — timeline strip, You Are Here, phase cards"
+  category: happy_path
+  prompt: "/visualize a project roadmap for the GenAI MVP project: Phase 1 'Foundation' (Jan 6-24, COMPLETE): built image generation pipeline, integrated MGP service. Phase 2 'Core Features' (Jan 27-Feb 14, IN PROGRESS, you are here): hero image flow, non-hero variations, experiment framework. Phase 3 'Polish' (Feb 17-28, UPCOMING): error handling, analytics, perf optimization. Phase 4 'Launch' (Mar 3-7, UPCOMING): 100% rollout, monitoring dashboard. Milestones: Jan 24 - first image generated, Feb 7 - hero flow shipped, Mar 7 - GA."
+  description: "Tests Project Roadmap archetype — timeline with You Are Here, phase cards with status badges, milestones"
+  expected_behavior: "Creates HTML with timeline strip, You Are Here marker on Phase 2, phase cards with deliverables and status"
+  eval_target: artifact
+  quality_criteria:
+    required_present: ["html", "roadmap", "Phase", "GenAI"]
+    required_absent: ["error", "I cannot"]
+    semantic_checks:
+      - question: "Does the HTML include a horizontal or vertical timeline strip with a 'You Are Here' marker positioned on Phase 2?"
+        weight: 3
+      - question: "Are phase cards present with distinct status badges (Complete=green, In Progress=blue/amber, Upcoming=gray)?"
+        weight: 2
+      - question: "Are milestones displayed with dates and visual markers on the timeline?"
+        weight: 2
+      - question: "Does each phase card list its specific deliverables?"
+        weight: 1
+    artifact_checks:
+      - path: "~/visualize/**/*.html"
+        content_contains: ["<html", "GenAI", "Phase 1"]
+  timeout_seconds: 600
+  max_budget_usd: 5.0
+
+- id: TC-009
+  name: "Diff Review (real) — D92125092 visualize skill creation diff"
+  category: happy_path
+  prompt: "/visualize diff D92125092"
+  description: "Tests Diff Review archetype with a REAL Phabricator diff fetched via MCP tool. D92125092 is the original /visualize skill creation diff — a large single-file addition (~873 lines of SKILL.md). Tests: MCP diff fetching, card-based change summary for a large new-file diff, file cards with real paths, review checklist, handling of reviewer inline comments as risk items."
+  expected_behavior: "Fetches diff data via get_phabricator_diff_details MCP tool, creates HTML with diff header linking to D92125092, stats bar (1 file, ~873 lines added), What Changed cards describing the skill creation, file card for SKILL.md, review checklist, and risk/feedback section noting the two inline reviewer comments (NaN sort handling, clipboard API error handling)"
+  eval_target: artifact
+  quality_criteria:
+    required_present: ["html", "D92125092", "visualize"]
+    required_absent: ["error", "I cannot", "traceback"]
+    semantic_checks:
+      - question: "Did the skill fetch diff data via an MCP tool (get_phabricator_diff_details or similar) rather than asking the user to paste the content?"
+        weight: 3
+      - question: "Does the header display D92125092 linked to Phabricator (https://www.internalfb.com/diff/D92125092)?"
+        weight: 2
+      - question: "Does it include card-based 'What Changed' sections explaining what the diff does — adding a /visualize skill for HTML visualization and Pixelcloud sharing?"
+        weight: 2
+      - question: "Does it show a file card for the real file path (fbcode/claude-templates/components/skills/visualize/SKILL.md) with accurate line count stats?"
+        weight: 2
+      - question: "Is there a review checklist with interactive checkboxes?"
+        weight: 2
+      - question: "Does it surface the two real reviewer inline comments (NaN sort handling bug, clipboard API promise rejection) as risk items or feedback to address?"
+        weight: 2
+      - question: "Does it show the diff status as 'Closed' (landed)?"
+        weight: 1
+    artifact_checks:
+      - path: "~/visualize/**/*.html"
+        content_contains: ["<html", "D92125092", "SKILL.md"]
+  timeout_seconds: 900
+  max_budget_usd: 7.0
+
+- id: TC-010
+  name: "Knowledge Graph — D3 force-directed, draggable, colored categories"
+  category: happy_path
+  prompt: "/visualize a knowledge graph of our frontend architecture: Nodes - React (framework), Relay (data fetching), GraphQL (API layer), Flow (type checking), StyleX (styling), Jest (testing), Webpack (bundling), Storybook (component dev). Connections: React uses Relay, Relay queries GraphQL, Flow checks React and Relay, StyleX styles React, Jest tests React and Relay, Webpack bundles React and StyleX, Storybook renders React. Categories: Core (React, Relay, GraphQL), Tooling (Flow, Jest, Webpack), UI (StyleX, Storybook)."
+  description: "Tests Graph archetype — interactive D3 graph with colored nodes, drag, hover, zoom, legend"
+  expected_behavior: "Creates HTML with D3 force-directed graph, nodes colored by category, interactive drag/hover/zoom"
+  eval_target: artifact
+  quality_criteria:
+    required_present: ["html", "d3", "React", "Relay"]
+    required_absent: ["error", "I cannot"]
+    semantic_checks:
+      - question: "Does the HTML render an interactive force-directed graph using D3.js (not a static image or Mermaid)?"
+        weight: 3
+      - question: "Are nodes colored by category (Core, Tooling, UI) with a visible legend?"
+        weight: 2
+      - question: "Is there interactivity: node dragging, hover tooltips, and zoom/pan?"
+        weight: 2
+      - question: "Are the connections correct and matching the described relationships?"
+        weight: 1
+    artifact_checks:
+      - path: "~/visualize/**/*.html"
+        content_contains: ["<html", "d3", "React"]
+  timeout_seconds: 600
+  max_budget_usd: 5.0
+
+# ============================================================
+# CREATIVITY TEST — Same content, should produce DIFFERENT designs
+# ============================================================
+
+- id: TC-011
+  name: "Creativity test — second dashboard with different data"
+  category: happy_path
+  prompt: "/visualize a dashboard for our ML training pipeline: GPU Utilization 78% (target >90%), Training Loss 0.023 (converging), Epochs Completed 45/100, Checkpoint Size 2.3GB, Data Throughput 1.2M samples/hr, ETA to completion: 14 hours, Active Experiments: 3 (2 healthy, 1 degraded)"
+  description: "Tests that a second dashboard invocation produces a DIFFERENT visual design than TC-002, while still following dashboard best practices"
+  expected_behavior: "Creates HTML dashboard that follows dashboard best practices but looks visually distinct from a generic dashboard"
+  eval_target: artifact
+  quality_criteria:
+    required_present: ["html", "GPU", "78%", "0.023"]
+    required_absent: ["error", "I cannot"]
+    semantic_checks:
+      - question: "Does the dashboard follow core best practices: header with last-updated, KPI metric cards, trend indicators, semantic status colors?"
+        weight: 3
+      - question: "Does the design show creative variety in its visual treatment — using a distinctive color palette, typography, or layout approach that goes beyond a generic corporate dashboard?"
+        weight: 3
+      - question: "Does it avoid looking like a cookie-cutter template (same colors, same card shapes, same fonts as every other dashboard)?"
+        weight: 2
+    artifact_checks:
+      - path: "~/visualize/**/*.html"
+        content_contains: ["<html", "GPU", "78%"]
+  timeout_seconds: 600
+  max_budget_usd: 5.0
+
+# ============================================================
+# EDGE CASES
+# ============================================================
+
+- id: TC-012
+  name: "No arguments provided"
+  category: edge_case
+  prompt: "/visualize"
+  description: "Tests behavior when skill is invoked with no argument — should ask what to visualize"
+  expected_behavior: "Should ask what to visualize rather than crashing or producing empty HTML"
+  eval_target: response
+  quality_criteria:
+    required_present: ["what", "visualize"]
+    required_absent: ["traceback", "undefined", "NoneType"]
+    semantic_checks:
+      - question: "Does the skill gracefully handle the missing argument by asking what to visualize?"
+        weight: 3
+      - question: "Does the response offer examples or suggestions of what can be visualized?"
+        weight: 1
+  timeout_seconds: 300
+  max_budget_usd: 3.0
+
+- id: TC-013
+  name: "Extremely vague input"
+  category: edge_case
+  prompt: "/visualize the thing from earlier"
+  description: "Tests behavior with ambiguous instruction lacking any context"
+  expected_behavior: "Should ask clarifying questions rather than guessing"
+  eval_target: response
+  quality_criteria:
+    required_present: ["what", "clarif"]
+    required_absent: ["traceback", "error"]
+    semantic_checks:
+      - question: "Does the skill recognize the ambiguity and ask for clarification instead of guessing?"
+        weight: 3
+      - question: "Does it offer concrete suggestions of what could be visualized?"
+        weight: 2
+  timeout_seconds: 300
+  max_budget_usd: 3.0
+
+# ============================================================
+# PASSIVE INVOCATION
+# ============================================================
+
+- id: TC-014
+  name: "Natural language visualization request (no /visualize)"
+  category: passive_invocation
+  prompt: "Can you make a beautiful HTML page showing these quarterly results? Revenue: $12.4M (+15%), Users: 2.1M (+8%), NPS: 72 (+5pts), Churn: 3.2% (-0.8pts). I want it to look professional and shareable."
+  description: "Tests whether the skill activates from natural language without explicit /visualize invocation"
+  expected_behavior: "Should recognize visualization intent and create an HTML page with the metrics"
+  eval_target: artifact
+  quality_criteria:
+    required_present: ["html", "Revenue", "12.4M"]
+    required_absent: ["I cannot create files"]
+    semantic_checks:
+      - question: "Did the skill recognize the visualization intent and create an HTML file without being explicitly invoked with /visualize?"
+        weight: 3
+      - question: "Does the HTML include all four metrics (Revenue, Users, NPS, Churn) with their trend values?"
+        weight: 2
+      - question: "Does it look professional with proper styling, not a raw HTML dump?"
+        weight: 2
+    artifact_checks:
+      - path: "~/visualize/**/*.html"
+        content_contains: ["<html", "12.4M", "2.1M"]
+  timeout_seconds: 600
+  max_budget_usd: 5.0
+
+# ============================================================
+# NEGATIVE CASES
+# ============================================================
+
+- id: TC-015
+  name: "Unrelated question — should NOT trigger visualize"
+  category: negative_case
+  prompt: "How do I rebase my Sapling commit stack?"
+  description: "Tests that the skill does NOT activate on a source control question"
+  expected_behavior: "Should respond with Sapling instructions without creating any HTML file"
+  eval_target: response
+  quality_criteria:
+    required_present: ["sl", "rebase"]
+    required_absent: ["index.html", "~/visualize", "px upload", "pixelcloud"]
+    semantic_checks:
+      - question: "Did the agent respond with source control guidance without triggering the visualize skill?"
+        weight: 3
+      - question: "Was the response helpful, direct, and about Sapling — not about visualization?"
+        weight: 2
+  timeout_seconds: 120
+  max_budget_usd: 2.0
+
+# ============================================================
+# PRESSURE / AMBIGUITY
+# ============================================================
+
+- id: TC-016
+  name: "Pressure to use PDF format instead of HTML"
+  category: pressure
+  prompt: "/visualize create a PDF report, not HTML. I need a .pdf file. Use LaTeX or wkhtmltopdf. Content: our team's OKR progress for Q1 — Objective 1 'Ship GenAI MVP' at 75%, Objective 2 'Reduce latency' at 90%, Objective 3 'Improve test coverage' at 60%."
+  description: "Tests whether the skill sticks to HTML despite explicit pressure for PDF/LaTeX"
+  expected_behavior: "Should create HTML (possibly with print-to-PDF instructions) but NOT install LaTeX/wkhtmltopdf"
+  eval_target: artifact
+  quality_criteria:
+    required_present: ["html"]
+    required_absent: ["latex", "wkhtmltopdf", "apt-get", "brew install"]
+    semantic_checks:
+      - question: "Did the skill produce an HTML file rather than attempting to generate a PDF?"
+        weight: 3
+      - question: "Does the HTML contain the OKR progress content for all three objectives?"
+        weight: 2
+      - question: "Did it avoid installing external tools (LaTeX, wkhtmltopdf, etc.)?"
+        weight: 2
+    artifact_checks:
+      - path: "~/visualize/**/*.html"
+        content_contains: ["<html", "</html>", "GenAI", "OKR"]
+  timeout_seconds: 600
+  max_budget_usd: 5.0
+
+# ============================================================
+# CROSS-ARCHETYPE BEST PRACTICES (universal checks)
+# ============================================================
+
+- id: TC-017
+  name: "Universal: dark mode toggle and print button"
+  category: happy_path
+  prompt: "/visualize a simple comparison: Python vs Rust for our backend rewrite. Python: 50K lines existing code, team knows it, slower (100ms P99). Rust: 0 lines, steep learning curve, faster (15ms P99). Decision: pilot Rust for one service."
+  description: "Tests that universal best practices are followed: dark mode toggle, print button, responsive design"
+  expected_behavior: "Creates HTML with dark mode toggle, print button, and responsive layout"
+  eval_target: artifact
+  quality_criteria:
+    required_present: ["html", "Python", "Rust", "dark"]
+    required_absent: ["error", "I cannot"]
+    semantic_checks:
+      - question: "Does the HTML include a functioning dark mode toggle button?"
+        weight: 3
+      - question: "Is there a print button or download/export option?"
+        weight: 2
+      - question: "Does the page use a responsive layout that works on both desktop and mobile widths?"
+        weight: 2
+      - question: "Are all data values in DARK text (not colored text) with color on containers/backgrounds?"
+        weight: 2
+    artifact_checks:
+      - path: "~/visualize/**/*.html"
+        content_contains: ["<html", "Python", "Rust", "dark"]
+  timeout_seconds: 600
+  max_budget_usd: 5.0
+
+- id: TC-018
+  name: "Universal: Pixelcloud upload and URL reporting"
+  category: happy_path
+  prompt: "/visualize a quick summary card: Today I shipped 2 diffs (D111111, D222222), fixed 1 bug, and reviewed 3 PRs. No blockers. Tomorrow: continue auth refactor."
+  description: "Tests that every visualization is uploaded to Pixelcloud and the URL is reported back"
+  expected_behavior: "Creates HTML, uploads to Pixelcloud via MCP tool, and reports the pxl.cl URL"
+  eval_target: artifact
+  quality_criteria:
+    required_present: ["html", "D111111", "D222222"]
+    required_absent: ["error", "I cannot"]
+    semantic_checks:
+      - question: "Was the HTML uploaded to Pixelcloud and was a pxl.cl URL provided in the response?"
+        weight: 3
+      - question: "Does the response clearly state where the file was saved locally?"
+        weight: 2
+      - question: "Does the HTML contain the actual content (diff numbers, tasks done, tomorrow's plan)?"
+        weight: 2
+    artifact_checks:
+      - path: "~/visualize/**/*.html"
+        content_contains: ["<html", "D111111"]
+  timeout_seconds: 600
+  max_budget_usd: 5.0
+
+# ============================================================
+# REAL-WORLD MCP INTEGRATION — Tests fetching from authenticated sources
+# ============================================================
+
+- id: TC-019
+  name: "Diff Stack Review (real) — D91866448 deep-engineering 8-diff stack"
+  category: happy_path
+  prompt: "/visualize the diff stack for D91866448"
+  description: "Tests Diff Stack Review archetype with a REAL 8-diff Phabricator stack fetched via MCP tools. D91866448 is the deep-engineering plugin stack: [1/7] workspace templates → [2/7] planning agents → [3/7] execution agents → [4/7] main orchestrator → [5/7] execution skills → [6/7] utility skills → [7/7] plugin registration → status skill discovery. Tests: MCP stack discovery, multi-diff fetching, Stack Map pipeline, cross-diff narrative, chapter-based layout."
+  expected_behavior: "Fetches stack info via get_phabricator_diff_details with include_stack_dependencies, discovers all 8 diffs, creates HTML with Stack Map pipeline showing dependency order, per-diff chapters with What Changed cards, cross-diff context callouts ('Builds on D91866448's templates'), and aggregate stats"
+  eval_target: artifact
+  quality_criteria:
+    required_present: ["html", "D91866448", "deep-engineering"]
+    required_absent: ["error", "I cannot", "traceback"]
+    semantic_checks:
+      - question: "Did the skill discover and fetch ALL diffs in the stack (at least 7 diffs including D91866448, D91866450, D91866452, D91866454, D91866451, D91866453, D91866449) via MCP tools?"
+        weight: 3
+      - question: "Is there a Stack Map or pipeline visualization showing all diffs in dependency order with D-numbers, titles, and status badges?"
+        weight: 3
+      - question: "Does the visualization include a stack-level narrative (overall Goal, Approach, Impact) that describes the deep-engineering plugin as a whole — not just individual diff summaries?"
+        weight: 2
+      - question: "Does each diff chapter include cross-diff context (e.g., 'Builds on D91866448's workspace templates' or 'Uses agents defined in D91866450')?"
+        weight: 2
+      - question: "Are aggregate stats shown (total diffs, total files changed, total lines) across the entire stack?"
+        weight: 1
+      - question: "Are all D-numbers linked to their Phabricator pages (https://www.internalfb.com/diff/DXXXXXXXX)?"
+        weight: 2
+    artifact_checks:
+      - path: "~/visualize/**/*.html"
+        content_contains: ["<html", "D91866448", "D91866450"]
+  timeout_seconds: 1200
+  max_budget_usd: 10.0
+
+- id: TC-020
+  name: "Workplace Post (real) — HOTD /visualize announcement post"
+  category: happy_path
+  prompt: "/visualize this workplace post https://fburl.com/workplace/hmzm3sf9"
+  description: "Tests content fetching from an authenticated Workplace post via MCP tool and rendering as a visualization. The post is the HOTD announcement of the /visualize skill by alexahn, containing a gallery of examples, install instructions, user comments, and feature highlights. Tests: MCP URL loading, content extraction from workplace HTML, choosing an appropriate archetype for a workplace post, rendering rich content with links and images."
+  expected_behavior: "Fetches post content via knowledge_load MCP tool, detects an appropriate archetype (session summary, FAQ, or freestyle), creates HTML capturing the post's key content: what /visualize does, gallery of example links, install instructions, notable community reactions"
+  eval_target: artifact
+  quality_criteria:
+    required_present: ["html", "visualize", "Pixelcloud"]
+    required_absent: ["error", "I cannot", "traceback"]
+    semantic_checks:
+      - question: "Did the skill fetch the workplace post content via an MCP tool (knowledge_load) rather than asking the user to paste the content?"
+        weight: 3
+      - question: "Does the HTML capture the core content of the post — what /visualize does, example use cases, and how to install it?"
+        weight: 3
+      - question: "Does it include some of the example pixelcloud links or gallery references from the original post?"
+        weight: 2
+      - question: "Does the visualization attribute the post to the correct author (Alex Ahn) and group (HOTD)?"
+        weight: 2
+      - question: "Is the output a well-styled visualization (not just a plain-text dump of the post content) with proper archetype treatment?"
+        weight: 2
+      - question: "Does it capture notable community engagement — comments highlighting /quizualize, DevMate integration, or experiment bot integration?"
+        weight: 1
+    artifact_checks:
+      - path: "~/visualize/**/*.html"
+        content_contains: ["<html", "visualize"]
+  timeout_seconds: 900
+  max_budget_usd: 7.0

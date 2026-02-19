@@ -1,0 +1,988 @@
+# Grill Skill Evaluation Criteria
+# Generated: 2026-02-17
+# Mode: Thorough (17 test cases)
+# Focus: Question accuracy, code tracing, LLM analysis failure modes
+
+- id: TC-001
+  name: "Basic grill on simple Python function"
+  category: happy_path
+  prompt: |
+    I just wrote this Python function. Please write it to /tmp/grill_eval/basic_sort.py and then /grill me on it. Choose option 3 (specific file) when asked what code to challenge on.
+
+    ```python
+    def deduplicate_and_sort(items: list[str]) -> list[str]:
+        """Remove duplicates and return sorted list."""
+        seen = set()
+        unique = []
+        for item in items:
+            normalized = item.strip().lower()
+            if normalized not in seen:
+                seen.add(normalized)
+                unique.append(item)
+        return sorted(unique, key=str.lower)
+    ```
+
+    When you start asking me questions, here are my pre-scripted answers:
+    - Q1: "It deduplicates strings case-insensitively while preserving original casing, then sorts them."
+    - Q2: "If the input contains non-string items, .strip() would throw an AttributeError."
+    - Q3: "I'd add a type check at the start, or use a try/except around the normalization."
+    Please go through the full quiz with these answers and give me a summary at the end.
+  description: "Tests basic grill workflow: code identification, question generation, answer evaluation, and summary"
+  expected_behavior: "Skill should identify the file, generate 3-5 questions (including 2+ debugging), evaluate pre-scripted answers, adapt difficulty, and provide a summary"
+  eval_target: response
+  quality_criteria:
+    required_present: ["question", "debug", "summary"]
+    required_absent: ["I cannot", "error loading", "skill not found"]
+    semantic_checks:
+      - question: "Does the response follow the grill workflow (identify code → generate questions → evaluate answers → summary)?"
+        weight: 3
+      - question: "Are at least 2 questions focused on debugging or failure scenarios?"
+        weight: 3
+      - question: "Does the summary include strengths, areas to review, and growth observed?"
+        weight: 2
+      - question: "Does the response adapt difficulty based on the quality of answers?"
+        weight: 2
+    artifact_checks: []
+  timeout_seconds: 300
+  max_budget_usd: 5.0
+
+- id: TC-002
+  name: "Grill on real codebase file"
+  category: real_world
+  prompt: |
+    /grill me on the file at fbcode/claude-templates/components/skills/grill/SKILL.md — I want to be challenged on understanding this skill definition. Choose option 3 (specific file) when asked.
+    When asked questions, use these answers:
+    - Q1: "The skill quizzes engineers on code they generated with AI to prevent skill erosion."
+    - Q2: "It starts at Level 2 and adjusts based on whether answers are correct and articulate."
+    - Q3: "If the user gives a wrong answer, it provides up to 3 scaffolded hints before explaining."
+    Complete the quiz and summarize.
+  description: "Tests grilling on a real file from the repo (the skill's own SKILL.md)"
+  expected_behavior: "Skill should read the file, generate relevant questions about the workflow/design, evaluate answers, and provide a summary"
+  eval_target: response
+  quality_criteria:
+    required_present: ["question", "adaptive", "summary"]
+    required_absent: ["file not found", "I cannot", "error"]
+    semantic_checks:
+      - question: "Does the skill successfully read and analyze the target file?"
+        weight: 3
+      - question: "Are the questions relevant to the content of SKILL.md (workflow design, teaching methods)?"
+        weight: 3
+      - question: "Does the response demonstrate understanding of the file's content rather than generic questions?"
+        weight: 2
+    artifact_checks: []
+  timeout_seconds: 300
+  max_budget_usd: 5.0
+
+- id: TC-003
+  name: "Constant blindness trap"
+  category: edge_case
+  prompt: |
+    I wrote this code. Please write it to /tmp/grill_eval/batch_processor.py and then /grill me on it. Choose option 3 (specific file).
+
+    ```python
+    MAX_RETRIES = 3
+    TIMEOUT_SEC = 5
+    BATCH_SIZE = 10
+
+    def process_batch(items: list[str]) -> list[str]:
+        results = []
+        for i in range(0, len(items), BATCH_SIZE):
+            batch = items[i:i + BATCH_SIZE]
+            for attempt in range(MAX_RETRIES):
+                try:
+                    result = _send_request(batch, timeout=TIMEOUT_SEC)
+                    results.extend(result)
+                    break
+                except TimeoutError:
+                    if attempt == MAX_RETRIES - 1:
+                        raise
+        return results
+
+    def _send_request(batch: list[str], timeout: int) -> list[str]:
+        # Simulated external API call
+        return [item.upper() for item in batch]
+    ```
+
+    Just generate all questions first — I'll review them before answering.
+  description: "Tests whether grill respects explicit constants (MAX_RETRIES=3, TIMEOUT_SEC=5, BATCH_SIZE=10) or fabricates different values"
+  expected_behavior: "All questions should reference actual constant values (3 retries, 5 seconds, 10 items per batch). No question should mention values like 50 items, 10 retries, or 30 seconds."
+  eval_target: response
+  quality_criteria:
+    required_present: ["question", "batch", "retry"]
+    required_absent: ["50 items", "10 retries", "100 retries", "30 second"]
+    semantic_checks:
+      - question: "Do ALL generated questions respect the constants MAX_RETRIES=3, TIMEOUT_SEC=5, BATCH_SIZE=10 without fabricating different values?"
+        weight: 5
+      - question: "Does the skill demonstrate awareness of the specific numerical constraints in the code?"
+        weight: 3
+      - question: "Are debugging questions grounded in scenarios that are actually possible given the code's constraints?"
+        weight: 3
+    artifact_checks: []
+  timeout_seconds: 300
+  max_budget_usd: 5.0
+
+- id: TC-004
+  name: "Pipeline data flow tracing"
+  category: edge_case
+  prompt: |
+    I wrote this log analyzer. Please write it to /tmp/grill_eval/log_analyzer.py and then /grill me on it. Choose option 3 (specific file).
+
+    ```python
+    import random
+
+    def analyze_logs(raw_logs: list[str]) -> dict[str, int]:
+        # Step 1: Parse valid entries only (lines starting with "[")
+        parsed = [parse_entry(log) for log in raw_logs if log.startswith("[")]
+
+        # Step 2: Sample if too many (cap at 100)
+        if len(parsed) > 100:
+            parsed = random.sample(parsed, 100)
+
+        # Step 3: Classify by level
+        classified: dict[str, list] = {}
+        for entry in parsed:
+            level = entry["level"]
+            if level not in classified:
+                classified[level] = []
+            classified[level].append(entry)
+
+        # Step 4: Count per level
+        return {level: len(entries) for level, entries in classified.items()}
+
+    def parse_entry(log: str) -> dict:
+        level = log[1:log.index("]")]
+        message = log[log.index("]") + 2:]
+        return {"level": level, "message": message}
+    ```
+
+    Just generate all questions first — I'll review them.
+  description: "Tests whether grill traces the data pipeline correctly, especially the sampling cap at 100"
+  expected_behavior: "Questions should reflect understanding that: (1) only lines starting with '[' are parsed, (2) maximum 100 entries after sampling, (3) classification happens after sampling. Should NOT ask about 500+ parsed entries in classification."
+  eval_target: response
+  quality_criteria:
+    required_present: ["question", "sample", "parse"]
+    required_absent: ["500 entries", "1000 entries"]
+    semantic_checks:
+      - question: "Does the skill demonstrate understanding that the sampling step caps entries at 100 before classification?"
+        weight: 5
+      - question: "Do questions accurately trace the data flow: raw_logs → filter('[') → parse → sample(100) → classify → count?"
+        weight: 4
+      - question: "Does the skill correctly identify that only lines starting with '[' are parsed (not all raw_logs)?"
+        weight: 3
+    artifact_checks: []
+  timeout_seconds: 300
+  max_budget_usd: 5.0
+
+- id: TC-005
+  name: "Complex multi-function call chain tracing"
+  category: real_world
+  prompt: |
+    I wrote this task scheduler. Please write it to /tmp/grill_eval/scheduler.py and then /grill me on it. Choose option 3 (specific file).
+
+    ```python
+    import threading
+    import time
+    from collections import deque
+    from uuid import uuid4
+
+    class TaskScheduler:
+        MAX_QUEUE_SIZE = 50
+        PRIORITY_LEVELS = 3
+
+        def __init__(self):
+            self._queues = [deque() for _ in range(self.PRIORITY_LEVELS)]
+            self._lock = threading.Lock()
+            self._running: dict[str, threading.Thread] = {}
+            self._max_concurrent = 5
+            self._completed: list[str] = []
+
+        def submit(self, task_fn, priority: int = 1) -> str:
+            if priority < 0 or priority >= self.PRIORITY_LEVELS:
+                raise ValueError(f"Priority must be 0-{self.PRIORITY_LEVELS - 1}")
+            with self._lock:
+                total = sum(len(q) for q in self._queues)
+                if total >= self.MAX_QUEUE_SIZE:
+                    raise RuntimeError("Task queue is full")
+                task_id = uuid4().hex[:8]
+                self._queues[priority].append((task_id, task_fn))
+                return task_id
+
+        def _get_next(self):
+            with self._lock:
+                for queue in self._queues:
+                    if queue:
+                        return queue.popleft()
+            return None
+
+        def run_loop(self):
+            while True:
+                with self._lock:
+                    active = len(self._running)
+                if active >= self._max_concurrent:
+                    time.sleep(0.1)
+                    continue
+                next_item = self._get_next()
+                if next_item is None:
+                    time.sleep(0.1)
+                    continue
+                task_id, task_fn = next_item
+                t = threading.Thread(target=self._execute, args=(task_id, task_fn))
+                self._running[task_id] = t
+                t.start()
+
+        def _execute(self, task_id: str, task_fn):
+            try:
+                task_fn()
+            except Exception:
+                pass  # Swallow exceptions silently
+            finally:
+                with self._lock:
+                    del self._running[task_id]
+                    self._completed.append(task_id)
+
+        def get_status(self) -> dict:
+            with self._lock:
+                queued = sum(len(q) for q in self._queues)
+                running = len(self._running)
+                completed = len(self._completed)
+            return {"queued": queued, "running": running, "completed": completed}
+    ```
+
+    This has threading, priority queues, and multiple interacting methods. Generate all questions first and focus on the most complex aspects. I want to be challenged hard.
+  description: "Tests grill's ability to trace complex multi-function code with threading, locks, priority queues, and interleaved state management"
+  expected_behavior: "Questions should demonstrate deep understanding of: (1) lock acquisition ordering, (2) priority queue semantics (0 is highest), (3) max concurrent = 5, (4) exception swallowing in _execute, (5) thread safety of _completed list access. Should identify the race condition in run_loop."
+  eval_target: response
+  quality_criteria:
+    required_present: ["question", "thread", "lock", "priority"]
+    required_absent: ["I cannot analyze", "too complex"]
+    semantic_checks:
+      - question: "Does the skill identify the race condition between checking active count and starting new threads in run_loop?"
+        weight: 5
+      - question: "Does the skill correctly understand the priority queue semantics (queue[0] is highest priority, checked first)?"
+        weight: 3
+      - question: "Does the skill ask about the exception swallowing pattern in _execute and its implications?"
+        weight: 3
+      - question: "Do questions accurately reference the constants (MAX_QUEUE_SIZE=50, PRIORITY_LEVELS=3, max_concurrent=5)?"
+        weight: 4
+      - question: "Does the skill identify thread-safety concerns around _running dict access?"
+        weight: 3
+    artifact_checks: []
+  timeout_seconds: 300
+  max_budget_usd: 5.0
+
+- id: TC-006
+  name: "No code available — graceful handling"
+  category: edge_case
+  prompt: |
+    /grill
+    I don't have any recent code changes and I'm not working on anything specific right now.
+  description: "Tests how grill handles the edge case where no code is available to challenge on"
+  expected_behavior: "Should ask what code to challenge on, offer options (specific file, last code block, etc.), not crash or generate questions about nothing"
+  eval_target: response
+  quality_criteria:
+    required_present: ["what", "code"]
+    required_absent: ["error", "crash", "exception"]
+    semantic_checks:
+      - question: "Does the skill gracefully handle the absence of code by asking the user what to grill on?"
+        weight: 4
+      - question: "Does it offer clear options for identifying code to challenge on?"
+        weight: 3
+      - question: "Does it avoid generating questions about non-existent code?"
+        weight: 3
+    artifact_checks: []
+  timeout_seconds: 300
+  max_budget_usd: 5.0
+
+- id: TC-007
+  name: "Loop constraint trap"
+  category: edge_case
+  prompt: |
+    I wrote this config validator. Please write it to /tmp/grill_eval/config_validator.py and then /grill me on it. Choose option 3 (specific file).
+
+    ```python
+    REQUIRED_FIELDS = ["name", "version", "author"]
+    MAX_TAGS = 5
+    MAX_TAG_LENGTH = 30
+
+    def validate_config(config: dict) -> list[str]:
+        errors = []
+        for field in REQUIRED_FIELDS:
+            if field not in config:
+                errors.append(f"Missing required field: {field}")
+
+        if "tags" in config:
+            tags = config["tags"][:MAX_TAGS]  # Silently truncate to 5
+            for tag in tags:
+                if not isinstance(tag, str) or len(tag) > MAX_TAG_LENGTH:
+                    errors.append(f"Invalid tag: {tag}")
+
+        if "dependencies" in config:
+            seen = set()
+            for dep in config["dependencies"]:
+                if dep in seen:
+                    errors.append(f"Duplicate dependency: {dep}")
+                seen.add(dep)
+
+        return errors
+    ```
+
+    Generate all questions first.
+  description: "Tests whether grill respects loop constraints — tags are truncated to MAX_TAGS=5 with MAX_TAG_LENGTH=30"
+  expected_behavior: "Questions should NOT ask about scenarios with more than 5 tags being validated (the code silently truncates). Should recognize the silent truncation as a potential issue."
+  eval_target: response
+  quality_criteria:
+    required_present: ["question", "tag", "validate"]
+    required_absent: ["20 tags", "100 tags", "all tags are validated"]
+    semantic_checks:
+      - question: "Does the skill recognize that tags are silently truncated to MAX_TAGS=5, so only 5 tags are ever validated?"
+        weight: 5
+      - question: "Does a question address the silent truncation as a potential bug or design concern?"
+        weight: 3
+      - question: "Do questions correctly reference MAX_TAG_LENGTH=30 without fabricating a different value?"
+        weight: 3
+    artifact_checks: []
+  timeout_seconds: 300
+  max_budget_usd: 5.0
+
+- id: TC-008
+  name: "Passive invocation — natural language trigger"
+  category: passive_invocation
+  prompt: |
+    I just finished writing a caching module. Can you quiz me on it to make sure I understand how it works? Here's the code:
+
+    ```python
+    from time import time
+
+    class TTLCache:
+        def __init__(self, ttl_seconds: int = 300):
+            self._cache: dict[str, tuple[float, any]] = {}
+            self._ttl = ttl_seconds
+
+        def get(self, key: str):
+            if key in self._cache:
+                timestamp, value = self._cache[key]
+                if time() - timestamp < self._ttl:
+                    return value
+                del self._cache[key]
+            return None
+
+        def set(self, key: str, value) -> None:
+            self._cache[key] = (time(), value)
+
+        def clear_expired(self) -> int:
+            now = time()
+            expired = [k for k, (ts, _) in self._cache.items() if now - ts >= self._ttl]
+            for key in expired:
+                del self._cache[key]
+            return len(expired)
+    ```
+
+    Answer Q1: "It stores key-value pairs with timestamps and checks if they're expired on read."
+    Answer Q2: "The cache isn't thread-safe. If two threads call get and set simultaneously, we could have race conditions."
+    Answer Q3: "I'd add a threading.Lock around cache operations."
+  description: "Tests whether grill activates from natural language ('quiz me on it') without explicit /grill invocation"
+  expected_behavior: "Skill should auto-trigger from 'quiz me' phrasing, generate questions about the TTL cache, and conduct a proper grill session"
+  eval_target: response
+  quality_criteria:
+    required_present: ["question", "cache", "TTL"]
+    required_absent: ["I cannot", "not a valid command"]
+    semantic_checks:
+      - question: "Does the skill automatically trigger from the natural language request ('quiz me on it') without explicit /grill?"
+        weight: 4
+      - question: "Are the questions specifically about the TTL cache implementation, not generic?"
+        weight: 3
+      - question: "Does the skill identify thread-safety as a valid debugging concern?"
+        weight: 2
+    artifact_checks: []
+  timeout_seconds: 300
+  max_budget_usd: 5.0
+
+- id: TC-009
+  name: "Negative case — coding question should NOT trigger grill"
+  category: negative
+  prompt: |
+    How do I implement a binary search tree in Python? Can you show me an example with insert and search methods?
+  description: "Tests that grill does NOT activate for general coding questions unrelated to reviewing existing code"
+  expected_behavior: "Should provide a normal coding answer (BST implementation) WITHOUT invoking the grill workflow. No quiz, no adaptive difficulty, no 'let me challenge you' behavior."
+  eval_target: response
+  quality_criteria:
+    required_present: ["class", "def", "insert"]
+    required_absent: ["grill", "quiz you", "challenge you", "Level 1", "Level 2"]
+    semantic_checks:
+      - question: "Does the response provide a BST implementation WITHOUT activating the grill skill?"
+        weight: 5
+      - question: "Is the response a normal helpful coding answer, not a quiz or challenge?"
+        weight: 3
+    artifact_checks: []
+  timeout_seconds: 300
+  max_budget_usd: 5.0
+
+- id: TC-010
+  name: "Scope creep — fabricated dependencies"
+  category: pressure
+  prompt: |
+    I wrote this small utility. Please write it to /tmp/grill_eval/rate_limiter.py and /grill me on it. Choose option 3 (specific file).
+
+    ```python
+    import time
+
+    class RateLimiter:
+        def __init__(self, max_calls: int, window_sec: float):
+            self._max_calls = max_calls
+            self._window = window_sec
+            self._calls: list[float] = []
+
+        def allow(self) -> bool:
+            now = time.monotonic()
+            self._calls = [t for t in self._calls if now - t < self._window]
+            if len(self._calls) >= self._max_calls:
+                return False
+            self._calls.append(now)
+            return True
+
+        def wait_and_allow(self) -> None:
+            while not self.allow():
+                time.sleep(0.01)
+    ```
+
+    This is a self-contained 20-line class. Generate all questions — they should ONLY be about this code, nothing else.
+  description: "Tests whether grill stays scoped to the provided code or invents external dependencies and integrations that don't exist"
+  expected_behavior: "All questions should be about the RateLimiter class itself. Should NOT reference external databases, Redis, distributed systems, or other code that doesn't exist in this file."
+  eval_target: response
+  quality_criteria:
+    required_present: ["question", "RateLimiter", "allow"]
+    required_absent: ["Redis", "database", "distributed", "microservice"]
+    semantic_checks:
+      - question: "Do ALL questions stay strictly within the scope of the provided RateLimiter code?"
+        weight: 5
+      - question: "Does the skill avoid inventing external dependencies or integrations not present in the code?"
+        weight: 4
+      - question: "Are debugging questions grounded in actual failure modes of this specific implementation (e.g., monotonic clock, list memory growth)?"
+        weight: 3
+    artifact_checks: []
+  timeout_seconds: 300
+  max_budget_usd: 5.0
+
+- id: TC-011
+  name: "Unverifiable external API behavior"
+  category: pressure
+  prompt: |
+    I wrote this API client. Please write it to /tmp/grill_eval/api_client.py and /grill me on it. Choose option 3 (specific file).
+
+    ```python
+    import requests
+
+    def fetch_user_profile(user_id: int) -> dict | None:
+        """Fetch user profile from the internal API."""
+        try:
+            response = requests.get(
+                f"https://api.internal.example.com/users/{user_id}",
+                timeout=10,
+                headers={"Authorization": f"Bearer {_get_token()}"}
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException:
+            return None
+
+    def _get_token() -> str:
+        """Read auth token from environment."""
+        import os
+        token = os.environ.get("API_TOKEN")
+        if not token:
+            raise RuntimeError("API_TOKEN not set")
+        return token
+    ```
+
+    Generate all questions. IMPORTANT: only ask questions that can be answered from reading THIS code. Do not make assumptions about the API's response format or behavior.
+  description: "Tests whether grill asks questions about things it cannot verify — external API response formats, rate limits, error codes"
+  expected_behavior: "Questions should focus on error handling, timeout behavior, token management — things visible in the code. Should NOT assume specific API response format, claim the API returns specific status codes, or assert knowledge about the API's contract."
+  eval_target: response
+  quality_criteria:
+    required_present: ["question", "timeout", "token"]
+    required_absent: ["API returns a list", "status code 429", "rate limit"]
+    semantic_checks:
+      - question: "Does the skill avoid making unverifiable assumptions about the external API's behavior (response format, specific error codes, rate limits)?"
+        weight: 5
+      - question: "Are questions focused on what IS visible in the code (error handling, timeout=10, token management, None return)?"
+        weight: 4
+      - question: "Does the skill acknowledge uncertainty about external dependencies rather than asserting facts about them?"
+        weight: 3
+    artifact_checks: []
+  timeout_seconds: 300
+  max_budget_usd: 5.0
+
+- id: TC-012
+  name: "Intentional exception silencing — no right answer"
+  category: pressure
+  prompt: |
+    I wrote this event bus. Please write it to /tmp/grill_eval/event_bus.py and /grill me on it. Choose option 3 (specific file).
+
+    ```python
+    import logging
+
+    class EventBus:
+        """Fire-and-forget event system. Errors in handlers are logged, not propagated.
+        This is intentional — one failing handler should not prevent other handlers from running."""
+
+        def __init__(self):
+            self._handlers: dict[str, list[callable]] = {}
+            self._logger = logging.getLogger(__name__)
+
+        def subscribe(self, event: str, handler: callable) -> None:
+            self._handlers.setdefault(event, []).append(handler)
+
+        def emit(self, event: str, **data) -> None:
+            for handler in self._handlers.get(event, []):
+                try:
+                    handler(**data)
+                except Exception as e:
+                    self._logger.error(f"Handler failed for {event}: {e}")
+                    # Intentionally continue — other handlers should still run
+
+        def clear(self, event: str | None = None) -> None:
+            if event:
+                self._handlers.pop(event, None)
+            else:
+                self._handlers.clear()
+    ```
+
+    Generate all questions. Note: the exception handling pattern is INTENTIONAL and documented. Questions should explore design trade-offs, not assert it's a bug.
+  description: "Tests whether grill treats intentional exception silencing as a design trade-off to discuss, not a bug to fix"
+  expected_behavior: "Should ask about WHY this pattern was chosen, what the trade-offs are, when it might NOT be appropriate — not assert 'this is a bug, exceptions should propagate'"
+  eval_target: response
+  quality_criteria:
+    required_present: ["question", "handler", "exception"]
+    required_absent: ["this is a bug", "you should fix", "remove the try/except"]
+    semantic_checks:
+      - question: "Does the skill treat the exception silencing as a design trade-off rather than asserting it's a bug?"
+        weight: 5
+      - question: "Does a question explore WHEN this pattern might be inappropriate or have drawbacks?"
+        weight: 3
+      - question: "Does the skill acknowledge the docstring's stated intent (fire-and-forget, handler isolation)?"
+        weight: 3
+    artifact_checks: []
+  timeout_seconds: 300
+  max_budget_usd: 5.0
+
+- id: TC-013
+  name: "Closure capture trap — buggy vs fixed side-by-side"
+  category: edge_case
+  prompt: |
+    I wrote two versions of the same function. Please write it to /tmp/grill_eval/closures.py and /grill me on it. Choose option 3 (specific file).
+
+    ```python
+    def create_validators(rules: list[tuple[str, int]]) -> list[callable]:
+        """Create validation functions from (field_name, max_length) rules.
+        CORRECT version — uses default args to capture loop variables."""
+        validators = []
+        for field, max_len in rules:
+            def validate(value, _field=field, _max=max_len):
+                if not isinstance(value, str):
+                    return f"{_field}: expected string"
+                if len(value) > _max:
+                    return f"{_field}: exceeds {_max} chars"
+                return None
+            validators.append(validate)
+        return validators
+
+    def create_validators_buggy(rules: list[tuple[str, int]]) -> list[callable]:
+        """BUGGY version — closure captures loop variable by reference.
+        All validators will use the LAST rule's values."""
+        validators = []
+        for field, max_len in rules:
+            def validate(value):
+                if not isinstance(value, str):
+                    return f"{field}: expected string"
+                if len(value) > max_len:
+                    return f"{field}: exceeds {max_len} chars"
+                return None
+            validators.append(validate)
+        return validators
+    ```
+
+    Generate all questions. I want to know if you can correctly distinguish the bug between these two versions.
+  description: "Tests whether grill correctly identifies the closure variable capture difference between buggy and fixed versions"
+  expected_behavior: "Should correctly explain: (1) buggy version captures 'field' and 'max_len' by reference (all closures see last value), (2) fixed version uses default args to capture current values. Should NOT flag the fixed version as buggy."
+  eval_target: response
+  quality_criteria:
+    required_present: ["question", "closure", "capture"]
+    required_absent: ["both versions are buggy", "both have the same bug"]
+    semantic_checks:
+      - question: "Does the skill correctly identify that create_validators_buggy captures loop variables by reference (late binding)?"
+        weight: 5
+      - question: "Does the skill correctly identify that create_validators uses default args to capture current values (early binding)?"
+        weight: 5
+      - question: "Does the skill NOT flag the fixed version (create_validators) as buggy?"
+        weight: 4
+      - question: "Does a question explore the behavioral difference between the two versions with a concrete example?"
+        weight: 3
+    artifact_checks: []
+  timeout_seconds: 300
+  max_budget_usd: 5.0
+
+- id: TC-014
+  name: "Runtime polymorphism — can't determine dispatch"
+  category: pressure
+  prompt: |
+    I wrote this serialization system. Please write it to /tmp/grill_eval/serializers.py and /grill me on it. Choose option 3 (specific file).
+
+    ```python
+    import json
+    from abc import ABC, abstractmethod
+
+    class Serializer(ABC):
+        @abstractmethod
+        def serialize(self, data: dict) -> bytes: ...
+
+        @abstractmethod
+        def deserialize(self, raw: bytes) -> dict: ...
+
+    class JsonSerializer(Serializer):
+        def serialize(self, data: dict) -> bytes:
+            return json.dumps(data).encode()
+
+        def deserialize(self, raw: bytes) -> dict:
+            return json.loads(raw)
+
+    class CompactSerializer(Serializer):
+        """Custom binary format: key=value pairs separated by newlines."""
+        def serialize(self, data: dict) -> bytes:
+            lines = [f"{k}={v}" for k, v in data.items()]
+            return "\n".join(lines).encode()
+
+        def deserialize(self, raw: bytes) -> dict:
+            result = {}
+            for line in raw.decode().split("\n"):
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    result[k] = v
+            return result
+
+    def process_message(data: dict, serializer: Serializer) -> bytes:
+        validated = {k: v for k, v in data.items() if v is not None}
+        return serializer.serialize(validated)
+    ```
+
+    Generate all questions. Note: the serializer used in process_message depends on runtime configuration — you cannot know which one is used from this code alone.
+  description: "Tests whether grill avoids making assertions about runtime dispatch when the concrete implementation depends on configuration"
+  expected_behavior: "Should ask about the Strategy pattern, the None-filtering in process_message, the compact format limitations. Should NOT claim 'serialize returns JSON' without qualifying which serializer."
+  eval_target: response
+  quality_criteria:
+    required_present: ["question", "serializer", "process_message"]
+    required_absent: ["serialize always returns JSON", "the output format is JSON"]
+    semantic_checks:
+      - question: "Does the skill avoid asserting which serializer is used in process_message (since it's runtime-determined)?"
+        weight: 5
+      - question: "Does the skill ask about the limitations of CompactSerializer (e.g., values containing '=' or newlines)?"
+        weight: 3
+      - question: "Does a question address the None-filtering in process_message and its implications?"
+        weight: 3
+    artifact_checks: []
+  timeout_seconds: 300
+  max_budget_usd: 5.0
+
+- id: TC-015
+  name: "Clean correct code — no bugs to fabricate"
+  category: edge_case
+  prompt: |
+    I wrote this paginator. Please write it to /tmp/grill_eval/paginator.py and /grill me on it. Choose option 3 (specific file).
+
+    ```python
+    from typing import Iterator
+
+    class Paginator:
+        """Paginate a sequence with configurable page size."""
+
+        def __init__(self, items: list, page_size: int = 20):
+            if page_size < 1:
+                raise ValueError("page_size must be positive")
+            self._items = list(items)  # Defensive copy
+            self._page_size = page_size
+
+        @property
+        def total_pages(self) -> int:
+            if not self._items:
+                return 0
+            return (len(self._items) + self._page_size - 1) // self._page_size
+
+        def get_page(self, page: int) -> list:
+            """Get items for a 1-indexed page number."""
+            if page < 1 or page > self.total_pages:
+                return []
+            start = (page - 1) * self._page_size
+            return self._items[start:start + self._page_size]
+
+        def __iter__(self) -> Iterator[list]:
+            """Iterate through all pages."""
+            for i in range(1, self.total_pages + 1):
+                yield self.get_page(i)
+
+        def __len__(self) -> int:
+            return self.total_pages
+    ```
+
+    Generate all questions. This code is clean and correct — I want conceptual questions, not bug hunts.
+  description: "Tests whether grill fabricates bugs in clean, correct code or generates meaningful conceptual questions"
+  expected_behavior: "Should generate questions about design choices (defensive copy, 1-indexed pages, empty list handling), not invent bugs. Should NOT claim there's an off-by-one error, thread-safety issue, or missing validation that doesn't exist."
+  eval_target: response
+  quality_criteria:
+    required_present: ["question", "page", "paginator"]
+    required_absent: ["off-by-one", "this bug", "you need to fix"]
+    semantic_checks:
+      - question: "Does the skill generate meaningful conceptual questions rather than fabricating bugs?"
+        weight: 5
+      - question: "Does the skill NOT falsely assert there are bugs in the implementation?"
+        weight: 5
+      - question: "Does a question explore design choices (defensive copy, 1-indexed, empty handling) rather than claiming errors?"
+        weight: 3
+    artifact_checks: []
+  timeout_seconds: 300
+  max_budget_usd: 5.0
+
+- id: TC-016
+  name: "Generator exhaustion — real subtle bug"
+  category: real_world
+  prompt: |
+    I wrote this file processor. Please write it to /tmp/grill_eval/file_processor.py and /grill me on it. Choose option 3 (specific file).
+
+    ```python
+    from typing import Generator
+
+    def read_large_file(path: str, chunk_size: int = 8192) -> Generator[str, None, None]:
+        """Read file in chunks. Generator can only be consumed once."""
+        with open(path) as f:
+            while True:
+                chunk = f.read(chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+
+    def process_file(path: str) -> tuple[int, int]:
+        """Count lines and words in a file."""
+        chunks = read_large_file(path)
+
+        # Count lines
+        line_count = sum(chunk.count('\n') for chunk in chunks)
+
+        # Count words (BUG: generator is already exhausted!)
+        word_count = sum(len(chunk.split()) for chunk in chunks)
+
+        return line_count, word_count
+    ```
+
+    Generate all questions. Focus on the subtle issue in process_file.
+  description: "Tests whether grill can identify the generator exhaustion bug — the generator is consumed by line_count, so word_count always gets 0"
+  expected_behavior: "Should identify that 'chunks' is a generator consumed once by the line_count comprehension, so word_count always equals 0. This is a real, common Python bug."
+  eval_target: response
+  quality_criteria:
+    required_present: ["question", "generator", "exhaust"]
+    required_absent: ["both counts work correctly", "no issues"]
+    semantic_checks:
+      - question: "Does the skill identify the generator exhaustion bug where word_count is always 0?"
+        weight: 5
+      - question: "Does the skill explain WHY the generator is exhausted (consumed by the line_count comprehension)?"
+        weight: 4
+      - question: "Does a question or explanation suggest a fix (e.g., use list(), call read_large_file twice, or tee())?"
+        weight: 2
+    artifact_checks: []
+  timeout_seconds: 300
+  max_budget_usd: 5.0
+
+- id: TC-017
+  name: "Async concurrency semantics"
+  category: edge_case
+  prompt: |
+    I wrote this async client. Please write it to /tmp/grill_eval/async_client.py and /grill me on it. Choose option 3 (specific file).
+
+    ```python
+    import asyncio
+
+    class RateLimitedClient:
+        def __init__(self, max_concurrent: int = 3):
+            self._semaphore = asyncio.Semaphore(max_concurrent)
+            self._results: list[dict] = []
+
+        async def fetch(self, url: str) -> dict:
+            async with self._semaphore:
+                await asyncio.sleep(0.1)  # Simulated API call
+                return {"url": url, "status": 200}
+
+        async def fetch_all(self, urls: list[str]) -> list[dict]:
+            tasks = [self.fetch(url) for url in urls]
+            results = await asyncio.gather(*tasks)
+            self._results.extend(results)
+            return list(results)
+
+        async def fetch_sequential(self, urls: list[str]) -> list[dict]:
+            results = []
+            for url in urls:
+                result = await self.fetch(url)
+                results.append(result)
+                self._results.append(result)
+            return results
+    ```
+
+    Generate all questions. Pay attention to the concurrency semantics — gather vs sequential await behave very differently.
+  description: "Tests whether grill correctly distinguishes asyncio.gather concurrency from sequential await"
+  expected_behavior: "Should correctly identify: (1) fetch_all runs tasks concurrently (limited by semaphore to 3), (2) fetch_sequential runs one at a time, (3) _results is NOT thread-safe if multiple coroutines call fetch_all concurrently. Should NOT confuse asyncio with threading."
+  eval_target: response
+  quality_criteria:
+    required_present: ["question", "gather", "semaphore"]
+    required_absent: ["thread-safe issue with gather", "GIL prevents"]
+    semantic_checks:
+      - question: "Does the skill correctly explain that fetch_all runs tasks concurrently (limited to 3 by semaphore)?"
+        weight: 4
+      - question: "Does the skill correctly explain that fetch_sequential runs tasks one at a time?"
+        weight: 3
+      - question: "Does the skill NOT confuse asyncio concurrency with thread-based parallelism?"
+        weight: 4
+      - question: "Does a question address the potential issue with _results being mutated from multiple concurrent fetch_all calls?"
+        weight: 3
+    artifact_checks: []
+  timeout_seconds: 300
+  max_budget_usd: 5.0
+
+# === PRODUCTION REGRESSION TEST ===
+# Based on Wes's actual feedback (2026-02-04) and paste P2168090714 / diff D92315963
+# This reproduces the REAL question accuracy failures observed in production.
+# Three specific failure patterns documented:
+#   Q2: Asked "what if 50 targets?" when MAX_SOMEPATH_SAMPLES=10 caps it (constant blindness)
+#   Q4: Asked "what if target name contains (cfg:?" — impossible, Buck targets can't have spaces (impossible premise)
+#   Q5: Assumed 5 entry points — fabricated, not in code (fabricated value)
+
+- id: TC-018
+  name: "Production regression — Wes's FFmpeg dependency tracker (D92315963)"
+  category: real_world
+  prompt: |
+    I wrote this FFmpeg dependency tracking script. Please write it to /tmp/grill_eval/ffmpeg_tracker.py and then /grill me on it. Choose option 3 (specific file).
+
+    ```python
+    import random
+    import subprocess
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+    from typing import Dict, Set, Tuple, Optional, List
+
+    # Constants
+    MAX_SOMEPATH_SAMPLES = 10
+    SOMEPATH_TIMEOUT_SECONDS = 60
+    SOMEPATH_MAX_WORKERS = 10
+
+    def compute_new_targets(
+        current_targets: Dict[str, Set[str]],
+        previous_targets: Optional[Dict[str, Set[str]]]
+    ) -> Dict[str, Set[str]]:
+        """Compute new targets that appeared since last run."""
+        if previous_targets is None:
+            # First run: all targets are considered new
+            total_new = sum(len(targets) for targets in current_targets.values())
+            print(f"\nFirst run detected: All {total_new:,} targets are new")
+            return current_targets
+
+        new_targets: Dict[str, Set[str]] = {}
+        for entry_point, targets in current_targets.items():
+            prev = previous_targets.get(entry_point, set())
+            new = targets - prev
+            if new:
+                new_targets[entry_point] = new
+        return new_targets
+
+    def run_somepath_query(target: str, entry_point: str) -> Optional[str]:
+        """Run buck2 cquery somepath to trace dependency path."""
+        cmd = ["buck2", "cquery", f"somepath({target}, {entry_point})"]
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=SOMEPATH_TIMEOUT_SECONDS,
+            )
+            if result.returncode != 0:
+                return None
+
+            path_parts = []
+            for line in result.stdout.strip().split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
+                # Strip configuration suffix from buck2 output
+                if " (cfg:" in line:
+                    line = line.split(" (cfg:")[0]
+                path_parts.append(line)
+            return ",".join(path_parts) if path_parts else None
+        except subprocess.TimeoutExpired:
+            print(f"  Timeout: {target} -> {entry_point}")
+            return None
+
+    def sample_and_run_somepath(
+        new_targets: Dict[str, Set[str]]
+    ) -> Dict[Tuple[str, str], str]:
+        """Sample new targets and run somepath queries in parallel."""
+        sampled: List[Tuple[str, str]] = []
+
+        for entry_point, targets in new_targets.items():
+            targets_list = list(targets)
+            if len(targets_list) > MAX_SOMEPATH_SAMPLES:
+                sampled_targets = random.sample(targets_list, MAX_SOMEPATH_SAMPLES)
+            else:
+                sampled_targets = targets_list
+            for target in sampled_targets:
+                sampled.append((target, entry_point))
+
+        print(f"\nRunning somepath for {len(sampled)} sampled targets...")
+
+        results: Dict[Tuple[str, str], str] = {}
+        with ThreadPoolExecutor(max_workers=SOMEPATH_MAX_WORKERS) as executor:
+            future_to_target = {
+                executor.submit(run_somepath_query, target, ep): (target, ep)
+                for target, ep in sampled
+            }
+            for future in future_to_target:
+                target, ep = future_to_target[future]
+                try:
+                    path = future.result(timeout=SOMEPATH_TIMEOUT_SECONDS + 5)
+                    if path:
+                        results[(target, ep)] = path
+                except (FuturesTimeoutError, Exception) as e:
+                    print(f"  Error: {target} -> {ep}: {e}")
+
+        return results
+    ```
+
+    Generate all questions first — I'll review them before answering.
+
+    CRITICAL CONTEXT FOR YOUR QUESTIONS:
+    - This code processes FFmpeg dependency targets across multiple entry points (like ffmpeg_4.1, ffmpeg_5.0, etc.)
+    - The NUMBER of entry points is NOT specified in this code — it depends on runtime data
+    - MAX_SOMEPATH_SAMPLES = 10 caps how many targets are sampled PER ENTRY POINT
+    - Buck2 target names follow strict format like cell//path/to:target — they CANNOT contain spaces
+  description: |
+    Reproduces the REAL question accuracy failures from Wes's feedback on D92315963 (paste P2168090714).
+    Tests three specific failure patterns observed in production:
+    (1) Constant blindness — Q2 assumed 50 targets submitted to executor when MAX_SOMEPATH_SAMPLES=10 caps it
+    (2) Impossible premise — Q4 asked "what if target name contains (cfg:?" when Buck targets can't have spaces
+    (3) Fabricated value — Q5 asserted 5 entry points when the number isn't in the code
+  expected_behavior: |
+    Questions MUST respect these constraints:
+    1. MAX_SOMEPATH_SAMPLES=10 means at most 10 targets are sampled per entry point. Questions should NOT assume more targets are submitted per entry point.
+    2. The ' (cfg:' stripping uses a SPACE before '(cfg:'. Since Buck target names cannot contain spaces, this pattern can ONLY match the config suffix. Questions should NOT ask about target names containing (cfg:.
+    3. The number of entry points is NOT in the code. Questions should NOT assert a specific number like 5.
+    4. SOMEPATH_TIMEOUT_SECONDS=60 and SOMEPATH_MAX_WORKERS=10 are the actual values.
+  eval_target: response
+  quality_criteria:
+    required_present: ["question", "sample", "somepath"]
+    required_absent: ["50 targets are submitted", "100 targets", "what if a target name contains (cfg:"]
+    semantic_checks:
+      - question: "Do ALL questions respect MAX_SOMEPATH_SAMPLES=10 — never assuming more than 10 targets per entry point are submitted to the executor?"
+        weight: 5
+      - question: "Does the skill avoid asking about impossible scenarios involving Buck target names containing spaces or '(cfg:' strings?"
+        weight: 5
+      - question: "Does the skill avoid fabricating a specific number of entry points (like 5) when this information is not in the code?"
+        weight: 4
+      - question: "Do questions correctly reference the actual constants (MAX_SOMEPATH_SAMPLES=10, SOMEPATH_TIMEOUT_SECONDS=60, SOMEPATH_MAX_WORKERS=10)?"
+        weight: 3
+      - question: "Are debugging questions about realistic failure modes (e.g., subprocess timeout, ThreadPoolExecutor behavior, first-run vs incremental behavior)?"
+        weight: 3
+    artifact_checks: []
+  timeout_seconds: 300
+  max_budget_usd: 5.0

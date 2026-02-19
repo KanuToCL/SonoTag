@@ -911,6 +911,68 @@ async def classify_audio_local(
 
 
 # =============================================================================
+# Debug Endpoint (for diagnosing deployment issues)
+# =============================================================================
+
+
+@app.get("/debug/youtube-env")
+async def debug_youtube_env():
+    """
+    Debug endpoint to check YouTube download environment.
+    Returns yt-dlp version, ffmpeg availability, and system info.
+    """
+    debug_info = {
+        "platform": platform.platform(),
+        "python_version": platform.python_version(),
+        "yt_dlp": {},
+        "ffmpeg": {},
+        "temp_dir": {},
+    }
+
+    # Check yt-dlp
+    try:
+        import yt_dlp
+
+        debug_info["yt_dlp"]["installed"] = True
+        debug_info["yt_dlp"]["version"] = yt_dlp.version.__version__
+    except ImportError:
+        debug_info["yt_dlp"]["installed"] = False
+        debug_info["yt_dlp"]["version"] = None
+    except Exception as e:
+        debug_info["yt_dlp"]["error"] = str(e)
+
+    # Check ffmpeg
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        debug_info["ffmpeg"]["installed"] = result.returncode == 0
+        if result.returncode == 0:
+            first_line = result.stdout.split("\n")[0] if result.stdout else "unknown"
+            debug_info["ffmpeg"]["version"] = first_line
+        else:
+            debug_info["ffmpeg"]["error"] = result.stderr[:200]
+    except FileNotFoundError:
+        debug_info["ffmpeg"]["installed"] = False
+        debug_info["ffmpeg"]["error"] = "ffmpeg not found in PATH"
+    except Exception as e:
+        debug_info["ffmpeg"]["error"] = str(e)
+
+    # Check temp directory
+    temp_dir = tempfile.gettempdir()
+    debug_info["temp_dir"]["path"] = temp_dir
+    debug_info["temp_dir"]["writable"] = os.access(temp_dir, os.W_OK)
+    debug_info["temp_dir"]["free_space_mb"] = round(
+        shutil.disk_usage(temp_dir).free / (1024 * 1024), 2
+    )
+
+    return debug_info
+
+
+# =============================================================================
 # YouTube Analysis Endpoint
 # =============================================================================
 
@@ -1034,7 +1096,9 @@ async def analyze_youtube(request: YouTubeAnalysisRequest) -> YouTubeAnalysisRes
                 continue
 
         if last_error is not None:
-            logger.error(f"yt-dlp failed all strategies for URL '{request.url}': {last_error}")
+            logger.error(
+                f"yt-dlp failed all strategies for URL '{request.url}': {last_error}"
+            )
             error_str = str(last_error).lower()
             if "sign in" in error_str or "bot" in error_str or "confirm" in error_str:
                 raise HTTPException(
@@ -1276,7 +1340,9 @@ async def prepare_youtube_video(request: PrepareVideoRequest) -> PrepareVideoRes
             continue
 
     if last_error is not None:
-        logger.error(f"yt-dlp failed all strategies for URL '{request.url}': {last_error}")
+        logger.error(
+            f"yt-dlp failed all strategies for URL '{request.url}': {last_error}"
+        )
         error_str = str(last_error).lower()
         if "sign in" in error_str or "bot" in error_str or "confirm" in error_str:
             raise HTTPException(
