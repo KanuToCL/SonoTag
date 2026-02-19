@@ -1858,10 +1858,40 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               ℹ️
             </button>
 
+            {/* Clear Button */}
+            <button
+              type="button"
+              className="settings-btn"
+              onClick={() => {
+                setClassificationScores({});
+                classificationScoresRef.current = {};
+                setFrameScores({});
+                frameScoresRef.current = {};
+                setScoreHistory({});
+                setTopRankedHistory([]);
+                setTotalInferences(0);
+                setInferenceCount(0);
+                setSessionStartTime(null);
+                if (spectrogramRef.current) {
+                  const ctx = spectrogramRef.current.getContext("2d");
+                  if (ctx) ctx.clearRect(0, 0, spectrogramRef.current.width, spectrogramRef.current.height);
+                }
+                if (heatmapRef.current) {
+                  const ctx = heatmapRef.current.getContext("2d");
+                  if (ctx) ctx.clearRect(0, 0, heatmapRef.current.width, heatmapRef.current.height);
+                }
+              }}
+              title="Clear scores, spectrogram, and stats"
+              style={{ fontSize: "11px", width: "auto", padding: "0 10px" }}
+            >
+              Clear
+            </button>
+
+
             {/* Status */}
             <div className="status-indicator">
-              <span className={`status-dot ${(youtubeAnalyzing || status === "running") ? "active" : ""}`} />
-              <span>{youtubeAnalyzing ? "Analyzing" : status === "running" ? "Recording" : "Idle"}</span>
+              <span className={`status-dot ${(youtubeAnalyzing || soundcloudAnalyzing || status === "running") ? "active" : ""}`} />
+              <span>{youtubeAnalyzing || soundcloudAnalyzing ? "Analyzing" : status === "running" ? "Recording" : "Idle"}</span>
             </div>
           </div>
         </header>
