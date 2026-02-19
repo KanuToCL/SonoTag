@@ -686,6 +686,8 @@ const [layoutMode, setLayoutMode] = useState<"immersive" | "classic">("immersive
   // Inline search state for video modal
   const [showVideoModalSearch, setShowVideoModalSearch] = useState(false);
   const [videoModalSearchUrl, setVideoModalSearchUrl] = useState("");
+  const [showScModalSearch, setShowScModalSearch] = useState(false);
+  const [scModalSearchUrl, setScModalSearchUrl] = useState("");
 
   // Cumulative Statistics state
   const [showStatsModal, setShowStatsModal] = useState(false);
@@ -2476,35 +2478,239 @@ const classifyVideoBuffer = useCallback(async (sampleRateVideo: number): Promise
               boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
             }}
           >
-            {/* Drag handle */}
-            <div
-              className="modal-drag-handle"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                setIsDraggingModal(true);
-                dragOffsetRef.current = {
-                  x: e.clientX - videoModalPosition.x,
-                  y: e.clientY - videoModalPosition.y,
-                };
-              }}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                padding: "6px 10px",
-                cursor: "grab",
-                userSelect: "none",
-                borderBottom: "1px solid rgba(255,255,255,0.05)",
-                flexShrink: 0,
-              }}
-            >
-              <span style={{ fontSize: "11px", color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "80%" }}>
-                {soundcloudMedia.title}
-              </span>
-              <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>
-                {Math.floor(soundcloudMedia.duration_s / 60)}:{String(Math.floor(soundcloudMedia.duration_s % 60)).padStart(2, "0")}
-              </span>
-            </div>
+            {/* Drag handle - matching YouTube modal style */}
+              <div
+                className="modal-drag-handle"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setIsDraggingModal(true);
+                  dragOffsetRef.current = {
+                    x: e.clientX - videoModalPosition.x,
+                    y: e.clientY - videoModalPosition.y,
+                  };
+                }}
+                style={{
+                  height: "28px",
+                  background: "transparent",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "0 10px",
+                  cursor: "grab",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
+                  flexShrink: 0,
+                }}
+              >
+                <span style={{ fontSize: "11px", color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                  {soundcloudMedia.title}
+                </span>
+                <div style={{ display: "flex", gap: "6px", alignItems: "center", marginLeft: "8px" }}>
+                  {soundcloudAnalyzing && (
+                    <span style={{ fontSize: "9px", color: "var(--success)", display: "flex", alignItems: "center", gap: "4px" }}>
+                      <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--success)", animation: "pulse 2s ease infinite" }} />
+                      Live
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowLabelsModal(!showLabelsModal)}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    style={{
+                      background: showLabelsModal ? "rgba(255, 255, 255, 0.1)" : "transparent",
+                      border: "none",
+                      color: showLabelsModal ? "var(--text)" : "var(--muted)",
+                      cursor: "pointer",
+                      fontSize: "12px",
+                      padding: "2px 6px",
+                      borderRadius: "4px",
+                    }}
+                    title="Toggle labels panel"
+                  >
+                    Labels
+                  </button>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={() => {
+                      // Clear scores, spectrogram, heatmap, and stats
+                      setClassificationScores({});
+                      classificationScoresRef.current = {};
+                      setFrameScores({});
+                      frameScoresRef.current = {};
+                      setScoreHistory({});
+                      setTopRankedHistory([]);
+                      setTotalInferences(0);
+                      setInferenceCount(0);
+                      setSessionStartTime(null);
+                      if (spectrogramRef.current) {
+                        const ctx = spectrogramRef.current.getContext("2d");
+                        if (ctx) ctx.clearRect(0, 0, spectrogramRef.current.width, spectrogramRef.current.height);
+                      }
+                      if (heatmapRef.current) {
+                        const ctx = heatmapRef.current.getContext("2d");
+                        if (ctx) ctx.clearRect(0, 0, heatmapRef.current.width, heatmapRef.current.height);
+                      }
+                    }}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: "var(--muted)",
+                      cursor: "pointer",
+                      fontSize: "12px",
+                      padding: "2px 6px",
+                      borderRadius: "4px",
+                    }}
+                    title="Clear scores, spectrogram, and stats"
+                  >
+                    Clear
+                  </button>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={() => {
+                      setShowScModalSearch(!showScModalSearch);
+                      if (!showScModalSearch) setScModalSearchUrl("");
+                    }}
+                    style={{
+                      background: showScModalSearch ? "rgba(255, 255, 255, 0.1)" : "transparent",
+                      border: "none",
+                      color: showScModalSearch ? "var(--text)" : "var(--muted)",
+                      cursor: "pointer",
+                      fontSize: "14px",
+                      padding: "2px 4px",
+                      display: "flex",
+                      alignItems: "center",
+                    }}
+                    title="Search new track"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="11" cy="11" r="8" />
+                      <path d="M21 21l-4.35-4.35" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={() => {
+                      setSoundcloudAnalyzing(false);
+                      soundcloudAudioBufferRef.current = [];
+                      if (soundcloudScriptProcessorRef.current) {
+                        soundcloudScriptProcessorRef.current.disconnect();
+                        soundcloudScriptProcessorRef.current = null;
+                      }
+                      if (soundcloudSourceRef.current) {
+                        soundcloudSourceRef.current.disconnect();
+                        soundcloudSourceRef.current = null;
+                      }
+                      if (soundcloudAnalyserRef.current) {
+                        soundcloudAnalyserRef.current.disconnect();
+                        soundcloudAnalyserRef.current = null;
+                      }
+                      if (soundcloudAudioContextRef.current) {
+                        soundcloudAudioContextRef.current.close();
+                        soundcloudAudioContextRef.current = null;
+                      }
+                      if (soundcloudMedia) {
+                        cleanupVideo(soundcloudMedia.video_id).catch(() => {});
+                      }
+                      setSoundcloudMedia(null);
+                    }}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: "var(--muted)",
+                      cursor: "pointer",
+                      fontSize: "14px",
+                      padding: "2px 4px",
+                    }}
+                    title="Close"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+
+              {/* Search input (inline, like YouTube modal) */}
+              {showScModalSearch && (
+                <div style={{
+                  display: "flex", gap: "6px", padding: "6px 10px",
+                  borderBottom: "1px solid rgba(255,255,255,0.05)",
+                  background: "rgba(0,0,0,0.3)", flexShrink: 0,
+                }}>
+                  <input
+                    type="text"
+                    value={scModalSearchUrl}
+                    onChange={(e) => setScModalSearchUrl(e.target.value)}
+                    onKeyDown={async (e) => {
+                      if (e.key === "Enter" && scModalSearchUrl.trim() && !soundcloudPreparing) {
+                        setSoundcloudPreparing(true);
+                        setSoundcloudError("");
+                        try {
+                          const result = await prepareMedia(scModalSearchUrl);
+                          setSoundcloudMedia(result);
+                          setSoundcloudUrl(scModalSearchUrl);
+                          setShowScModalSearch(false);
+                          setScModalSearchUrl("");
+                          // Reset audio context for new track
+                          if (soundcloudScriptProcessorRef.current) { soundcloudScriptProcessorRef.current.disconnect(); soundcloudScriptProcessorRef.current = null; }
+                          if (soundcloudSourceRef.current) { soundcloudSourceRef.current.disconnect(); soundcloudSourceRef.current = null; }
+                          if (soundcloudAnalyserRef.current) { soundcloudAnalyserRef.current.disconnect(); soundcloudAnalyserRef.current = null; }
+                          if (soundcloudAudioContextRef.current) { soundcloudAudioContextRef.current.close(); soundcloudAudioContextRef.current = null; }
+                          soundcloudAudioBufferRef.current = [];
+                          setSoundcloudAnalyzing(false);
+                        } catch (err) {
+                          setSoundcloudError(err instanceof Error ? err.message : "Failed");
+                        } finally {
+                          setSoundcloudPreparing(false);
+                        }
+                      }
+                    }}
+                    placeholder="Paste SoundCloud URL..."
+                    autoFocus
+                    onMouseDown={(e) => e.stopPropagation()}
+                    style={{
+                      flex: 1, background: "rgba(0,0,0,0.4)", border: "1px solid rgba(255,255,255,0.1)",
+                      borderRadius: "4px", padding: "4px 8px", fontSize: "11px", color: "var(--text)",
+                      outline: "none", minWidth: 0,
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={async () => {
+                      if (!scModalSearchUrl.trim() || soundcloudPreparing) return;
+                      setSoundcloudPreparing(true);
+                      setSoundcloudError("");
+                      try {
+                        const result = await prepareMedia(scModalSearchUrl);
+                        setSoundcloudMedia(result);
+                        setSoundcloudUrl(scModalSearchUrl);
+                        setShowScModalSearch(false);
+                        setScModalSearchUrl("");
+                        if (soundcloudScriptProcessorRef.current) { soundcloudScriptProcessorRef.current.disconnect(); soundcloudScriptProcessorRef.current = null; }
+                        if (soundcloudSourceRef.current) { soundcloudSourceRef.current.disconnect(); soundcloudSourceRef.current = null; }
+                        if (soundcloudAnalyserRef.current) { soundcloudAnalyserRef.current.disconnect(); soundcloudAnalyserRef.current = null; }
+                        if (soundcloudAudioContextRef.current) { soundcloudAudioContextRef.current.close(); soundcloudAudioContextRef.current = null; }
+                        soundcloudAudioBufferRef.current = [];
+                        setSoundcloudAnalyzing(false);
+                      } catch (err) {
+                        setSoundcloudError(err instanceof Error ? err.message : "Failed");
+                      } finally {
+                        setSoundcloudPreparing(false);
+                      }
+                    }}
+                    disabled={soundcloudPreparing || !scModalSearchUrl.trim()}
+                    style={{
+                      background: "var(--accent)", border: "none", borderRadius: "4px",
+                      padding: "4px 10px", fontSize: "11px", color: "#000", cursor: "pointer",
+                      opacity: soundcloudPreparing || !scModalSearchUrl.trim() ? 0.5 : 1,
+                    }}
+                  >
+                    {soundcloudPreparing ? "..." : "Load"}
+                  </button>
+                </div>
+              )}
+
 
             {/* Album art */}
             {soundcloudMedia.thumbnail_url && (
