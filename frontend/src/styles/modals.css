@@ -1,0 +1,103 @@
+.floating-video-modal {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.floating-video-modal:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.floating-video-modal video {
+  border: none;
+  outline: none;
+}
+
+.floating-video-modal video::-webkit-media-controls {
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+}
+
+.modal-drag-handle:active {
+  cursor: grabbing;
+}
+
+.floating-labels-modal ::-webkit-scrollbar,
+.floating-stats-modal ::-webkit-scrollbar {
+  width: 6px;
+}
+
+.floating-labels-modal ::-webkit-scrollbar-track,
+.floating-stats-modal ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.floating-labels-modal ::-webkit-scrollbar-thumb,
+.floating-stats-modal ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.floating-labels-modal ::-webkit-scrollbar-thumb:hover,
+.floating-stats-modal ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.floating-labels-modal *,
+.floating-stats-modal * {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+.floating-webcam-modal {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.floating-webcam-modal:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.floating-webcam-modal video {
+  border: none;
+  outline: none;
+}
+
+.video-player-mini {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(15, 21, 32, 0.8);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  max-width: 500px;
+}
+
+.video-player-mini video {
+  width: 200px;
+  height: 112px;
+  border-radius: 4px;
+  background: #000;
+  cursor: pointer;
+}
+
+.video-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.video-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.video-status {
+  font-size: 11px;
+  color: var(--success);
+}

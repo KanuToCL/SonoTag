@@ -1,4 +1,3 @@
-// Re-export all types from the new modular location for backwards compatibility
 export type {
   ClassifyResponse,
   ClassifyLocalResponse,
@@ -21,6 +20,12 @@ export type {
   AnalyzeUrlChunkResult,
   AnalyzeUrlResponse,
   PrepareMediaResponse,
-} from "./types/api";
+} from "./api";
 
-export type { PermissionState, MonitoringStatus } from "./types/app";
+export type { PermissionState, MonitoringStatus, InputMode } from "./app";
+
+export {
+  COLOR_THEMES,
+  HEAT_COLORS,
+} from "./themes";
+export type { ColorTheme, ThemeColors } from "./themes";

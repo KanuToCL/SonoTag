@@ -1,0 +1,78 @@
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 980px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .status {
+    align-items: flex-start;
+  }
+
+  .spectrogram-frame {
+    grid-template-columns: 1fr;
+  }
+
+  .freq-axis {
+    flex-direction: row;
+    justify-content: space-between;
+  }
+
+  .heatmap-wrap {
+    grid-template-columns: 1fr;
+  }
+
+  .heatmap-labels {
+    display: none;
+  }
+
+  .heatmap-scale {
+    flex-direction: row;
+    justify-content: space-between;
+  }
+
+  .scale-gradient {
+    width: 100%;
+    height: 10px;
+  }
+
+  .scale-labels {
+    flex-direction: row;
+    width: 100%;
+  }
+
+  .immersive-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .footer-section {
+    flex-wrap: wrap;
+  }
+
+  .footer-divider {
+    display: none;
+  }
+
+  .dynamic-labels {
+    width: 140px;
+  }
+
+  .settings-panel {
+    width: 100%;
+  }
+}

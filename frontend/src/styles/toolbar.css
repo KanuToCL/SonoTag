@@ -1,0 +1,195 @@
+.immersive-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 24px;
+  border-bottom: 1px solid rgba(34, 48, 69, 0.4);
+  background: rgba(9, 13, 18, 0.95);
+  z-index: 100;
+}
+
+.immersive-header .logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: "Sora", sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.immersive-header .logo-icon {
+  font-size: 20px;
+}
+
+.immersive-header .controls-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.immersive-header .mode-tabs {
+  display: flex;
+  background: rgba(15, 21, 32, 0.8);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.immersive-header .mode-tab {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.immersive-header .mode-tab.active {
+  background: rgba(255, 122, 61, 0.2);
+  color: var(--accent);
+}
+
+.immersive-header .mode-tab:hover:not(.active) {
+  color: var(--text);
+}
+
+.immersive-header .settings-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: rgba(15, 21, 32, 0.8);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.immersive-header .settings-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.immersive-header .status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.immersive-header .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.immersive-header .status-dot.active {
+  background: var(--success);
+  box-shadow: 0 0 8px var(--success);
+  animation: pulse 2s ease infinite;
+}
+
+.immersive-footer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 24px;
+  border-top: 1px solid rgba(34, 48, 69, 0.4);
+  background: rgba(9, 13, 18, 0.95);
+  flex-wrap: wrap;
+}
+
+.footer-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.footer-section.grow {
+  flex: 1;
+}
+
+.footer-divider {
+  width: 1px;
+  height: 24px;
+  background: rgba(34, 48, 69, 0.6);
+}
+
+.preset-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  background: rgba(15, 21, 32, 0.8);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.preset-btn:hover {
+  color: var(--text);
+  border-color: rgba(255, 122, 61, 0.5);
+}
+
+.preset-btn.active {
+  background: rgba(255, 122, 61, 0.2);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.compact-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.compact-control label {
+  white-space: nowrap;
+}
+
+.compact-control input[type="range"] {
+  width: 80px;
+  height: 4px;
+  accent-color: var(--accent);
+}
+
+.compact-control .value {
+  min-width: 24px;
+  text-align: right;
+  color: var(--text);
+}
+
+.model-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(15, 21, 32, 0.8);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.model-badge.ready {
+  border-color: rgba(92, 227, 162, 0.4);
+  color: var(--success);
+}
+
+.model-badge .badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
