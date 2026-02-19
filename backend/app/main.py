@@ -1262,7 +1262,9 @@ def build_youtube_failure_detail(last_error: Exception | None) -> dict:
     # Classify the failure type
     if "sign in" in error_str or "bot" in error_str or "confirm" in error_str:
         failure_type = "bot_detection"
-        user_message = "YouTube is blocking downloads from this server due to bot detection."
+        user_message = (
+            "YouTube is blocking downloads from this server due to bot detection."
+        )
     elif "no video formats" in error_str or "sabr" in error_str:
         failure_type = "format_unavailable"
         user_message = (
@@ -1278,9 +1280,7 @@ def build_youtube_failure_detail(last_error: Exception | None) -> dict:
         failure_type = "unknown"
         user_message = "YouTube download failed for an unexpected reason."
 
-    healthy = sum(
-        1 for s in health.values() if s.get("consecutive_failures", 0) < 3
-    )
+    healthy = sum(1 for s in health.values() if s.get("consecutive_failures", 0) < 3)
     total = len(health)
 
     return {
@@ -1384,12 +1384,9 @@ async def download_from_url(
         logger.error(
             f"[download_from_url] All strategies failed for '{url}': {last_error}"
         )
-        error_str = str(last_error).lower() if last_error else ""
-        if "sign in" in error_str or "bot" in error_str or "confirm" in error_str:
-            raise HTTPException(
-                status_code=502,
-                detail=f"{platform_name.title()} is blocking this request (bot detection). Try again later.",
-            )
+        if platform_name == "youtube":
+            failure_detail = build_youtube_failure_detail(last_error)
+            raise HTTPException(status_code=502, detail=failure_detail)
         raise HTTPException(
             status_code=502,
             detail=f"Failed to download from {platform_name.title()}: {last_error}",
@@ -1826,16 +1823,8 @@ async def analyze_youtube(request: YouTubeAnalysisRequest) -> YouTubeAnalysisRes
             logger.error(
                 f"yt-dlp failed all strategies for URL '{request.url}': {last_error}"
             )
-            error_str = str(last_error).lower()
-            if "sign in" in error_str or "bot" in error_str or "confirm" in error_str:
-                raise HTTPException(
-                    status_code=502,
-                    detail="YouTube is blocking this request (bot detection). Try again later or use a different video.",
-                )
-            raise HTTPException(
-                status_code=502,
-                detail=f"Failed to download YouTube audio: {last_error}",
-            )
+            failure_detail = build_youtube_failure_detail(last_error)
+            raise HTTPException(status_code=502, detail=failure_detail)
 
         t_download_end = time.perf_counter()
         timing["download_ms"] = round((t_download_end - t_download_start) * 1000, 2)
@@ -2072,16 +2061,8 @@ async def prepare_youtube_video(request: PrepareVideoRequest) -> PrepareVideoRes
         logger.error(
             f"yt-dlp failed all strategies for URL '{request.url}': {last_error}"
         )
-        error_str = str(last_error).lower()
-        if "sign in" in error_str or "bot" in error_str or "confirm" in error_str:
-            raise HTTPException(
-                status_code=502,
-                detail="YouTube is blocking this request (bot detection). The video cannot be downloaded from this server at the moment. Try again later or use a different video.",
-            )
-        raise HTTPException(
-            status_code=502,
-            detail=f"Failed to download YouTube video. This may be due to the video being unavailable or region-locked. Error: {last_error}",
-        )
+        failure_detail = build_youtube_failure_detail(last_error)
+        raise HTTPException(status_code=502, detail=failure_detail)
 
     # Find the downloaded video file
     video_file = None
