@@ -49,7 +49,7 @@ const ENABLE_CLASSIC_VIEW = false; // Set to true to re-enable the Classic View 
 
 // Buffer size for audio capture
 const DEFAULT_BUFFER_SECONDS = 5;
-const VIDEO_BUFFER_SECONDS = 2; // Shorter buffer for YouTube/SoundCloud (less lag from video)
+const VIDEO_BUFFER_SECONDS = 5; // Match default — shorter buffers cause inflated FLAM scores due to tiling
 const MIN_BUFFER_SECONDS = 1;
 const MAX_BUFFER_SECONDS = 10;
 // Target sample rate for FLAM
