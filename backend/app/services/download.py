@@ -122,48 +122,34 @@ youtube_strategy_tracker = StrategyHealthTracker(
 )
 
 
-def build_youtube_failure_detail(last_error: Exception | None) -> dict:
+def build_youtube_failure_detail(last_error: Exception | None) -> str:
     """
-    Build a diagnostic, user-facing error when all YouTube strategies fail.
-    Returns a structured dict with actionable info for the frontend to display.
+    Build a diagnostic, user-facing error message when all YouTube strategies fail.
+    Returns a human-readable string (FastAPI detail must be string for frontend compat).
     """
-    health = youtube_strategy_tracker.get_health_report()
     error_str = str(last_error).lower() if last_error else ""
 
     if "sign in" in error_str or "bot" in error_str or "confirm" in error_str:
-        failure_type = "bot_detection"
         user_message = (
             "YouTube is blocking downloads from this server due to bot detection."
         )
+        suggestion = "Try Vimeo or SoundCloud — they work reliably from this server."
     elif "no video formats" in error_str or "sabr" in error_str:
-        failure_type = "format_unavailable"
         user_message = (
             "YouTube changed its streaming protocol and no compatible format was found."
         )
+        suggestion = "Try Vimeo or SoundCloud — they work reliably from this server."
     elif "drm" in error_str:
-        failure_type = "drm_protected"
         user_message = "This video uses DRM protection and cannot be downloaded."
+        suggestion = "Try a different video URL."
     elif "private" in error_str or "unavailable" in error_str:
-        failure_type = "video_unavailable"
         user_message = "This video is private, unavailable, or region-locked."
+        suggestion = "Try a different video URL."
     else:
-        failure_type = "unknown"
         user_message = "YouTube download failed for an unexpected reason."
+        suggestion = "Try again later, or use Vimeo / SoundCloud instead."
 
-    healthy = sum(1 for s in health.values() if s.get("consecutive_failures", 0) < 3)
-    total = len(health)
-
-    return {
-        "error": user_message,
-        "failure_type": failure_type,
-        "suggestion": (
-            "Try Vimeo or SoundCloud \u2014 they work reliably from this server."
-            if failure_type in ("bot_detection", "format_unavailable")
-            else "Try a different video URL."
-        ),
-        "strategies_healthy": f"{healthy}/{total}",
-        "technical_detail": str(last_error)[:300] if last_error else None,
-    }
+    return f"{user_message} {suggestion}"
 
 
 async def download_from_url(
