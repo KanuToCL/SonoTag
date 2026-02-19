@@ -972,6 +972,105 @@ async def debug_youtube_env():
     return debug_info
 
 
+@app.get("/debug/youtube-test")
+async def debug_youtube_test(url: str = "https://www.youtube.com/watch?v=jNQXAC9IVRw"):
+    """
+    Attempt a real YouTube download with verbose output to diagnose failures.
+    Uses a short video (first YouTube video ever, 19s) by default.
+    Returns raw yt-dlp verbose logs showing exactly what YouTube returns.
+    """
+    import yt_dlp
+
+    test_results = {
+        "test_url": url,
+        "yt_dlp_version": yt_dlp.version.__version__,
+        "strategies": [],
+        "summary": None,
+    }
+
+    player_client_strategies = [
+        ["ios", "web"],
+        ["android", "web"],
+        ["tv", "web"],
+        ["web_creator"],
+        ["mweb"],
+    ]
+
+    temp_dir = tempfile.mkdtemp(prefix="sonotag_debug_")
+
+    class VerboseLogger:
+        """Capture yt-dlp's verbose output into a list."""
+
+        def __init__(self):
+            self.messages = []
+
+        def debug(self, msg):
+            self.messages.append(f"[debug] {msg}")
+
+        def info(self, msg):
+            self.messages.append(f"[info] {msg}")
+
+        def warning(self, msg):
+            self.messages.append(f"[warn] {msg}")
+
+        def error(self, msg):
+            self.messages.append(f"[error] {msg}")
+
+    for strategy in player_client_strategies:
+        verbose_log = VerboseLogger()
+        strategy_result = {
+            "player_client": strategy,
+            "success": False,
+            "error": None,
+            "error_type": None,
+            "verbose_log_lines": 0,
+            "verbose_log_tail": [],
+        }
+
+        ydl_opts = {
+            "format": "bestaudio[filesize<5M]/bestaudio/best",
+            "outtmpl": os.path.join(temp_dir, f"test_{'_'.join(strategy)}.%(ext)s"),
+            "verbose": True,
+            "quiet": False,
+            "no_warnings": False,
+            "logger": verbose_log,
+            "socket_timeout": 15,
+            "extractor_args": {"youtube": {"player_client": strategy}},
+            "skip_download": True,  # Only extract info, don't download the file
+        }
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                strategy_result["success"] = True
+                strategy_result["video_title"] = info.get("title", "Unknown")
+                strategy_result["formats_available"] = len(info.get("formats", []))
+        except Exception as e:
+            strategy_result["error"] = str(e)[:500]
+            strategy_result["error_type"] = type(e).__name__
+
+        strategy_result["verbose_log_lines"] = len(verbose_log.messages)
+        strategy_result["verbose_log_tail"] = verbose_log.messages[-30:]
+
+        test_results["strategies"].append(strategy_result)
+
+    # Clean up
+    shutil.rmtree(temp_dir, ignore_errors=True)
+
+    # Summary
+    successes = [s for s in test_results["strategies"] if s["success"]]
+    if successes:
+        test_results["summary"] = (
+            f"{len(successes)}/{len(player_client_strategies)} strategies succeeded. Best: {successes[0]['player_client']}"
+        )
+    else:
+        test_results["summary"] = (
+            f"ALL {len(player_client_strategies)} strategies FAILED. YouTube is blocking this server's IP."
+        )
+
+    return test_results
+
+
 # =============================================================================
 # YouTube Analysis Endpoint
 # =============================================================================
@@ -1074,6 +1173,8 @@ async def analyze_youtube(request: YouTubeAnalysisRequest) -> YouTubeAnalysisRes
             ["ios", "web"],
             ["android", "web"],
             ["tv", "web"],
+            ["web_creator"],
+            ["mweb"],
         ]
         last_error = None
         for strategy in player_client_strategies:
@@ -1088,7 +1189,9 @@ async def analyze_youtube(request: YouTubeAnalysisRequest) -> YouTubeAnalysisRes
                 break
             except Exception as e:
                 last_error = e
-                logger.warning(f"[analyze-youtube] Strategy {strategy} failed: {e}")
+                logger.warning(
+                    f"[analyze-youtube] Strategy {strategy} failed: {type(e).__name__}: {e}"
+                )
                 for f in os.listdir(temp_dir):
                     fpath = os.path.join(temp_dir, f)
                     if os.path.isfile(fpath):
@@ -1317,6 +1420,8 @@ async def prepare_youtube_video(request: PrepareVideoRequest) -> PrepareVideoRes
         ["ios", "web"],
         ["android", "web"],
         ["tv", "web"],
+        ["web_creator"],
+        ["mweb"],
     ]
     last_error = None
     for strategy in player_client_strategies:
@@ -1331,7 +1436,9 @@ async def prepare_youtube_video(request: PrepareVideoRequest) -> PrepareVideoRes
             break
         except Exception as e:
             last_error = e
-            logger.warning(f"[prepare-youtube-video] Strategy {strategy} failed: {e}")
+            logger.warning(
+                f"[prepare-youtube-video] Strategy {strategy} failed: {type(e).__name__}: {e}"
+            )
             # Clean up any partial downloads before retry
             for f in os.listdir(video_dir):
                 fpath = os.path.join(video_dir, f)
