@@ -1,8 +1,21 @@
-# FLAM Browser
+# SonoTag
 
-FLAM Browser is a modern web console for live microphone input, frequency-range
+🌐 **Live Demo:** [https://sonotag.app](https://sonotag.app)
+
+SonoTag is a modern web console for live microphone input, frequency-range
 inspection, and real-time audio diagnostics. It pairs a lightweight React UI
-with a FastAPI backend that will host FLAM inference.
+with a FastAPI backend that hosts FLAM inference.
+
+---
+
+## 🔗 Related Projects
+
+| Project | Description |
+|---------|-------------|
+| [GeoNoise](https://geonoise.app) | Environmental noise modeling with ISO 9613-2 propagation |
+| [Cellcraft](https://cellcraft.dev) | Browser-based ecosystem simulation with genetics and population dynamics |
+
+---
 
 ## What you get today
 - Mic selection, permission flow, and live level meter.
