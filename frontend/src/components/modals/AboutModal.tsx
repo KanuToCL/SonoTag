@@ -262,34 +262,64 @@ export function AboutModal({ show, onClose }: AboutModalProps) {
             <div style={{ fontSize: "12px", color: "var(--muted)", marginBottom: "10px" }}>
               Try my other apps
             </div>
-            <a
-              href="https://www.geonoise.app"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "8px",
-                padding: "10px 20px",
-                borderRadius: "999px",
-                background: "rgba(255, 255, 255, 0.08)",
-                border: "1px solid rgba(255, 255, 255, 0.12)",
-                color: "var(--text)",
-                fontSize: "13px",
-                fontWeight: 500,
-                textDecoration: "none",
-                transition: "all 0.2s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "rgba(255, 255, 255, 0.15)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "rgba(255, 255, 255, 0.08)";
-              }}
-            >
-              🌍 GeoNoise
-            </a>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "center" }}>
+              <a
+                href="https://www.geonoise.app"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "8px",
+                  padding: "10px 20px",
+                  borderRadius: "999px",
+                  background: "rgba(255, 255, 255, 0.08)",
+                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                  color: "var(--text)",
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  textDecoration: "none",
+                  transition: "all 0.2s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.15)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.08)";
+                }}
+              >
+                🌍 GeoNoise
+              </a>
+              <a
+                href="https://www.cellcraft.dev"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "8px",
+                  padding: "10px 20px",
+                  borderRadius: "999px",
+                  background: "rgba(255, 255, 255, 0.08)",
+                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                  color: "var(--text)",
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  textDecoration: "none",
+                  transition: "all 0.2s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.15)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.08)";
+                }}
+              >
+                🧬 Cellcraft
+              </a>
+            </div>
           </div>
         </div>
       </div>
