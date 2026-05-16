@@ -1,6 +1,8 @@
 # SonoTag
 
-🌐 **Live Demo:** [https://sonotag.app](https://sonotag.app)
+![SonoTag — live FLAM detection on a video clip; spectrogram, ranked label confidence panel, cumulative statistics with per-label time series, PDF/CDF distributions, and a FLAM detection band](docs/screenshots/sonotag-ui.png)
+
+> 🪦 **Public demo retired** — `sonotag.app` was pulled when the ongoing hosting cost outweighed the demo value. This repo + screenshot preserve the architecture and UI; you can still run it locally with the install scripts below.
 
 SonoTag is a modern web console for live microphone input, frequency-range
 inspection, and real-time audio diagnostics. It pairs a lightweight React UI
